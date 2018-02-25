@@ -103,3 +103,5 @@ ENV/
 # vim leftovers
 *.un~
 
+# data jsons
+*.json

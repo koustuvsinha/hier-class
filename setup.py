@@ -7,7 +7,7 @@ with open('requirements.txt') as f:
     reqs = f.read()
 
 setup(
-    name='hier-class',
+    name='hier_class',
     version='0.0.1',
     description='Hierarchical Classifier',
     long_description=readme,
