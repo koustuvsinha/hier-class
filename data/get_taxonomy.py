@@ -8,11 +8,14 @@ import urllib
 from nltk.tokenize import sent_tokenize
 import pandas as pd
 from tqdm import tqdm
+import networkx as nx
+import random
 
 ENDPOINT = 'https://en.wikipedia.org/wiki/Wikipedia:Vital_articles'
 TAXONOMY_FILE = 'wiki_1000_taxonomy.json'
 WIKI_LOC = 'http://132.206.3.23:8020/enwikipedia/page/'
 W_URL = 'https://en.wikipedia.org/w/api.php?action=query&titles={}&format=json'
+WIBI_URL = '/home/ml/ksinha4/mlp/wibi/wibi-ver2.0/taxonomies/WiBi.pagetaxonomy.ver2.0.txt'
 
 class DataCollector():
     def __init__(self, url_endpoint=ENDPOINT, taxonomy_file=TAXONOMY_FILE, wiki_elastic_loc=WIKI_LOC):
@@ -196,6 +199,7 @@ class DataCollector():
         """
         node2sim = {}
         sim_max = {} # max similarity for sim
+        pb = tqdm(total=len(self.leaf_nodes))
         for i,node in enumerate(self.leaf_nodes):
             # check if node is present
             if node in self.doc2vec.docvecs:
@@ -206,6 +210,8 @@ class DataCollector():
                         sim_max[s[0]] = 0
                     if sim_max[s[0]] < s[1]:
                         sim_max[s[0]] = s[1]
+            pb.update(1)
+        pb.close()
         # prune
         prune2sim = {}
         for node,sims in node2sim.items():
@@ -213,9 +219,51 @@ class DataCollector():
 
         self.node2sim = prune2sim
 
+    def collect_wibi_children(self,steps=1,max_child=50):
+        """
+        Collect all children of the nodes from wibi taxonomy
+        """
+        node2childs = {}
+        pb = tqdm(total=len(self.leaf_nodes))
+        for i,node in enumerate(self.leaf_nodes):
+            childs = self.get_children(node,step=steps,max_child=max_child)
+            node2childs[node] = childs
+            pb.update(1)
+        pb.close()
+        self.node2childs = node2childs
+
 
     def load_taxonomy(self):
         self.taxonomy = json.load(open(self.taxonomy_file))
+
+    def load_wibi(self,wibi_url=WIBI_URL):
+        self.wibi_g = nx.read_edgelist(wibi_url, delimiter='\t',create_using=nx.DiGraph())
+        self.wibi_gr = self.wibi_g.reverse()
+
+    def get_children(self, node, step=10000, last=False, max_child=50):
+        """
+        Get children of the node from wibi taxonomy
+        """
+        p_nodes = []
+        consider = [node]
+        while (step > 0):
+            step = step - 1
+            if step == 0 and last:
+                p_nodes = []
+            new_con = []
+            for n in consider:
+                if self.wibi_gr.has_node(n):
+                    preds = self.wibi_gr.successors(n)
+                    for w in preds:
+                        if w not in p_nodes:
+                            p_nodes.append(w)
+                            new_con.append(w)
+            consider = new_con
+            if len(consider) == 0 or len(p_nodes) > max_child:
+                break
+        if len(p_nodes) > max_child:
+            p_nodes = list(random.sample(p_nodes, max_child))
+        return p_nodes
 
     def save_taxonomy(self):
         # save taxonomy
@@ -227,12 +275,31 @@ if __name__=='__main__':
     dc.get_taxonomy()
     dc.get_trajectories()
     ln = dc.get_leaf_nodes()
+    print("Number of leaf nodes : {}".format(len(ln)))
+    json.dump(ln, open('leaf_nodes_list.json','w'))
+    print("Loading word2vec")
     dc.load_doc2vec()
-    dc.collect_top_neighbours()
+    print("Loading wibi")
+    dc.load_wibi()
+    print("Collecting top neighbours")
+    dc.collect_top_neighbours(topk=100)
+    print("Neighbors collected : {}".format(len([k for k,v in dc.node2sim.items() if len(v) > 0])))
+    #exit(0)
+    print("Collecting wibi children")
+    dc.collect_wibi_children()
     nd = dc.node2sim
-    all_nodes = [v for k, v in nd.items()]
-    all_nodes = [x for v in all_nodes for x in v]
+    ndc = dc.node2childs
+    nd_items = [v for k, v in nd.items()]
+    nd_items = list(set([x for v in nd_items for x in v]))
+    ndc_items = [v for k,v in ndc.items()]
+    ndc_items = list(set([x for v in ndc_items for x in v]))
+    print("Similar nodes : {}".format(len(nd_items)))
+    print("Children from wibi : {}".format(len(ndc_items)))
+    all_nodes = nd_items + ndc_items
+    print("All nodes to collect IDs from: {}".format(len(all_nodes)))
+    print("Collecting ids...")
     dc.collect_ids(all_nodes)
+    print("IDS collected. Recovered : {}".format(len(dc.nodeID)))
     node2id = dc.nodeID
     df = pd.DataFrame(columns=['text','l1','l2','l3'])
     doc_id = 0
@@ -241,17 +308,18 @@ if __name__=='__main__':
         leaf = traj[-1]
         if leaf in nd:
             leaf_sim = nd[leaf]
-            doc_list = [leaf] + leaf_sim
+            leaf_child = ndc[leaf]
+            doc_list = [leaf] + leaf_sim + leaf_child
             doc_id_list = [node2id[d] for d in doc_list if d in node2id]
             docs = [dc.get_pages(doc_id) for doc_id in doc_id_list]
             docs = [v for x in docs for v in x]
             for j,doc in enumerate(docs):
                 if len(traj) >= 3:
-                    df.loc[doc_id] = [doc, traj[0], traj[1], traj[2]]
+                    df.loc[doc_id] = [doc, traj[0], traj[1], traj[-1]]
                     doc_id += 1
         pb.update(1)
     pb.close()
-    df.to_csv('full_docs.csv',index=None)
+    df.to_csv('full_docs_2.csv',index=None)
 
 
 
