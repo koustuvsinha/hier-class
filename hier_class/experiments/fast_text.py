@@ -45,11 +45,13 @@ def exp_config():
     log_interval = 200
     save_interval = 1000
     train_test_split = 0.8
-    data_type = 'WOS'
-    data_loc = '/home/ml/ksinha4/datasets/data_WOS/WebOfScience/WOS46985'
+    data_type = 'WIKI'
+    data_loc = '/home/ml/ksinha4/mlp/hier-class/data/'
+    #data_loc = '/home/ml/ksinha4/datasets/data_WOS/WebOfScience/WOS46985'
     tokenization = 'word'
-    batch_size = 64
+    batch_size = 16
     epochs = 40
+    level = 2
 
 @ex.automain
 def train(_config, _run):
@@ -67,11 +69,10 @@ def train(_config, _run):
     gpu = _config['gpu']
     use_gpu = _config['use_gpu']
     model_params = copy.deepcopy(_config)
-    print(data.get_max_level())
-    print(len(data.get_level_labels(data.get_max_level())))
+    logging.info('Classes in level {} = {}'.format(_config['level'], len(data.get_level_labels(_config['level']))))
     model_params.update({
         'vocab_size': len(data.word2id),
-        'label_size': len(data.get_level_labels(data.get_max_level())),
+        'label_size': len(data.get_level_labels(_config['level'])),
         'pad_token': data.word2id[CONSTANTS.PAD_WORD]
     })
 
@@ -100,6 +101,8 @@ def train(_config, _run):
         train_acc = []
         validation_acc = []
         logging.info("Getting data")
+        logging.info("Num Train Rows: {}".format(len(data.train_indices)))
+        logging.info("Num Test Rows: {}".format(len(data.test_indices)))
         train_data_loader = torch.utils.data.DataLoader(dataset=data,
                                                   batch_size=batch_size,
                                                   shuffle=True,
