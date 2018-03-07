@@ -123,7 +123,7 @@ def train(_config, _run):
                 src_data = src_data.cuda(gpu)
                 labels = labels.cuda(gpu)
             optimizer.zero_grad()
-            loss, acc = model.batchNLLLoss(src_data, src_lengths, labels)
+            loss, acc = model.batchNLLLoss(src_data, src_lengths, labels,tf_ratio=0.5)
             loss.backward()
             optimizer.step()
             train_loss.append(loss.data[0])

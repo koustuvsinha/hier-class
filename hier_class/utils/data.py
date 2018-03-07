@@ -215,7 +215,7 @@ class Data_Utility():
             self.decoder_labels = []
             for labels in self.labels:
                 row_labels = [0] # start with the go label
-                for i, label in labels:
+                for i, label in enumerate(labels):
                     row_labels.append(label2id['l{}_{}'.format(i,label)])
                 self.decoder_labels.append(row_labels)
             self.decoder_num_labels = ct

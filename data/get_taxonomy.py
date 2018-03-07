@@ -219,7 +219,7 @@ class DataCollector():
 
         self.node2sim = prune2sim
 
-    def collect_wibi_children(self,steps=1,max_child=50):
+    def collect_wibi_children(self,steps=1,max_child=100):
         """
         Collect all children of the nodes from wibi taxonomy
         """
@@ -240,7 +240,7 @@ class DataCollector():
         self.wibi_g = nx.read_edgelist(wibi_url, delimiter='\t',create_using=nx.DiGraph())
         self.wibi_gr = self.wibi_g.reverse()
 
-    def get_children(self, node, step=10000, last=False, max_child=50):
+    def get_children(self, node, step=10000, last=False, max_child=100):
         """
         Get children of the node from wibi taxonomy
         """
@@ -319,7 +319,9 @@ if __name__=='__main__':
                     doc_id += 1
         pb.update(1)
     pb.close()
-    df.to_csv('full_docs_2.csv',index=None)
+    print("Final Statistics")
+    print("Total num rows: {}".format(len(df)))
+    df.to_csv('full_docs_3.csv',index=None)
 
 
 

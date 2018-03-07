@@ -11,7 +11,7 @@ class SimpleDecoder(nn.Module):
     and then uses a GRU to predict the categories from a top-down approach.
     """
 
-    def __init__(self, vocab_size=1, embedding_dim=300, category_emb_dim=64, total_cats=0, label_size=1, pad_token=1, **kwargs):
+    def __init__(self, vocab_size=1, embedding_dim=300, category_emb_dim=64, label_size=1, pad_token=1, **kwargs):
         """
 
         :param vocab_size:
@@ -33,10 +33,10 @@ class SimpleDecoder(nn.Module):
             pad_token
         )
         self.category_embedding = nn.Embedding(
-            total_cats,
+            label_size,
             category_emb_dim
         )
-        self.decoder = nn.GRU(category_emb_dim, embedding_dim)
+        self.decoder = nn.GRU(category_emb_dim, embedding_dim, batch_first=True)
         self.decoder2linear = nn.Linear(embedding_dim, label_size)
         self.logSoftMax = nn.LogSoftmax()
 
@@ -88,13 +88,14 @@ class SimpleDecoder(nn.Module):
         loss_fn = nn.NLLLoss()
         loss = 0
         accs = []
-        hidden_state = self.encode(src, src_lengths)
+        hidden_state = self.encode(src, src_lengths).unsqueeze(0)
         cat_len = categories.size(1) - 1
         out = None
         use_tf = True if (random.random() < tf_ratio) else False
         if use_tf:
             for i in range(cat_len):
                 inp_cat = categories[:,i]
+                inp_cat = inp_cat.unsqueeze(1)
                 out, hidden_state = self.forward(inp_cat, hidden_state)
                 target_cat = categories[:,i+1]
                 loss += loss_fn(out, target_cat)
@@ -104,7 +105,7 @@ class SimpleDecoder(nn.Module):
         else:
             for i in range(cat_len):
                 if i == 0:
-                    inp_cat = categories[:,i] # starting token
+                    inp_cat = categories[:,i].unsqueeze(1) # starting token
                 else:
                     topv, topi = out.data.topk(1)
                     inp_cat = Variable(topi)
