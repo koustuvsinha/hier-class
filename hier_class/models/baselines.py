@@ -10,7 +10,8 @@ import numpy as np
 class FastText(nn.Module):
     """ Implementation of fasttext in pytorch"""
 
-    def __init__(self, vocab_size=1, embedding_dim=300, label_size=1, pad_token=1, **kwargs):
+    def __init__(self, vocab_size=1, embedding_dim=300,
+                 label_size=1, pad_token=1, **kwargs):
         super(FastText, self).__init__()
         self.vocab_size = vocab_size
         self.label_size = label_size
