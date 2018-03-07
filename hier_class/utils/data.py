@@ -11,6 +11,7 @@ from nltk.tokenize import word_tokenize
 import json
 import random
 import numpy as np
+import pandas
 from hier_class.utils import constants
 import logging
 logging.basicConfig(
@@ -19,7 +20,13 @@ logging.basicConfig(
 )
 
 class Data_Utility():
-    def __init__(self, exp_name='', train_test_split=0.8):
+    def __init__(self, exp_name='', train_test_split=0.8, decoder_ready=False):
+        """
+
+        :param exp_name:
+        :param train_test_split:
+        :param decoder_ready: If decoder_ready = True, then return labels with a starting 0 label and shift all labels by 1
+        """
         self.word2id = {}
         self.id2word = {}
         self.dyna_dict = {}
@@ -28,6 +35,7 @@ class Data_Utility():
         self.split_ratio = train_test_split
         self.special_tokens = [constants.PAD_WORD]
         self.data_mode = 'train'
+        self.decoder_ready = decoder_ready
         parent_dir = dirname(dirname(dirname(abspath(__file__))))
         self.save_path_base = parent_dir + '/saved/' + exp_name
         if not os.path.exists(self.save_path_base):
@@ -46,10 +54,11 @@ class Data_Utility():
         data_m = {}
         dict_m = {}
         items = set()
+        y_classes = []
+        text_data = []
 
         if data_type == 'WOS':
             ## Web of science data
-            text_data = []
             with open(data_loc + '/X.txt') as fp:
                 for line in fp:
                     l_ = self.tokenize(line.strip(), mode=tokenization)
@@ -57,7 +66,7 @@ class Data_Utility():
                     text_data.append(l_)
             dict_m['word2id'], dict_m['id2word'] = self.assign_wordids(items, self.special_tokens)
             ## add the level1, level2 and level3 in per array
-            y_classes = []
+
             y_1 = []
             y_2 = []
             y_3 = []
@@ -72,9 +81,36 @@ class Data_Utility():
                     y_3.append(int(line.strip()))
             for i in range(len(y_1)):
                 y_classes.append([y_1[i],y_2[i],y_3[i]])
-            assert len(y_classes) == len(text_data)
-            data_m['data'] = text_data
-            data_m['labels'] = y_classes
+        elif data_type == 'WIKI':
+            df = pandas.read_csv(data_loc + '/full_docs_2.csv')
+            y_class2id = {'l1':{},'l2':{},'l3':{}}
+            ct_dict = {'l1':0,'l2':0,'l3':0}
+
+            def gen_class_id(row, level):
+                class_name = row[level]
+                ct = ct_dict[level]
+                if class_name not in y_class2id[level]:
+                    y_class2id[level][class_name] = ct
+                    ct_dict[level] += 1
+                return y_class2id[level][class_name]
+
+            for i,row in df.iterrows():
+                l_1 = gen_class_id(row,'l1')
+                l_2 = gen_class_id(row, 'l2')
+                l_3 = gen_class_id(row, 'l3')
+                y_classes.append([l_1,l_2,l_3])
+                text = row['text']
+                text = self.tokenize(str(text), mode=tokenization)
+                text_data.append(text)
+                items.update(text)
+
+            data_m['y_class2id'] = y_class2id
+            dict_m['word2id'], dict_m['id2word'] = self.assign_wordids(items, self.special_tokens)
+
+        assert len(y_classes) == len(text_data)
+        data_m['data'] = text_data
+        data_m['labels'] = y_classes
+
 
         ## create dynamic dictionary
         ## format: <l0>:[<l1>], <l1>:[<l2>]...
@@ -107,7 +143,7 @@ class Data_Utility():
         return list of all labels in the particular level
         :return:
         """
-        return list(set([p[level] for p in self.labels if len(p) <= (level + 1)]))
+        return list(set([p[level] for p in self.labels if len(p) >= (level + 1)]))
 
     def get_max_level(self):
         """
@@ -163,6 +199,27 @@ class Data_Utility():
         self.data = processed_dict['data_m']['data']
         self.labels = processed_dict['data_m']['labels']
         self.label_meta = processed_dict['dict_m']['label_meta']
+        if self.decoder_ready:
+            # fix the labels. during data collection, the labels where taken as unique id per level.
+            # to make all levels unique here for the decoder to work, we need to make them sequential
+            label2id = {}
+            # get the max number of labels per level
+            max_levels = max([len(label) for label in self.labels])
+            ct  = 1
+            for i in range(max_levels):
+                labels_in_level = set([label[i] for label in self.labels])
+                for lb in labels_in_level:
+                    # add a special structure so it can be recovered later
+                    label2id['l{}_{}'.format(i,lb)] = ct
+                    ct +=1
+            self.decoder_labels = []
+            for labels in self.labels:
+                row_labels = [0] # start with the go label
+                for i, label in labels:
+                    row_labels.append(label2id['l{}_{}'.format(i,label)])
+                self.decoder_labels.append(row_labels)
+            self.decoder_num_labels = ct
+
         self.split_indices()
 
     def split_indices(self):
@@ -246,6 +303,8 @@ class Data_Utility():
         data = self.data[rows[index]]
         data = [self.word2id[word] for word in data]
         labels = self.labels[rows[index]]
+        if self.decoder_ready:
+            labels = self.decoder_labels[rows[index]]
         data = torch.LongTensor(data)
         return data, labels
 

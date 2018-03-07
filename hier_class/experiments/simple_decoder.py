@@ -1,4 +1,4 @@
-# Experiment on fastText classification for WOS
+# Experiment on simple decoder classification
 
 import torch
 import torch.nn as nn
@@ -21,7 +21,7 @@ import copy
 import json
 from tqdm import tqdm
 from hier_class.utils import data as data_utils
-from hier_class.models import baselines
+from hier_class.models import decoders
 from hier_class.utils import constants as CONSTANTS
 
 ex = Experiment()
@@ -52,6 +52,7 @@ def exp_config():
     batch_size = 16
     epochs = 40
     level = 2
+    cat_emb_dim = 64
 
 @ex.automain
 def train(_config, _run):
@@ -61,7 +62,8 @@ def train(_config, _run):
     #writer = SummaryWriter(log_dir='../../logs/' + _config['exp_name'])
     data = data_utils.Data_Utility(
         exp_name=_config['exp_name'],
-        train_test_split=_config['train_test_split']
+        train_test_split=_config['train_test_split'],
+        decoder_ready=True
     )
     logging.info("Loading data")
     data.load(_config['data_type'],_config['data_loc'],_config['tokenization'])
@@ -72,11 +74,11 @@ def train(_config, _run):
     logging.info('Classes in level {} = {}'.format(_config['level'], len(data.get_level_labels(_config['level']))))
     model_params.update({
         'vocab_size': len(data.word2id),
-        'label_size': len(data.get_level_labels(_config['level'])),
+        'label_size': data.decoder_num_labels,
         'pad_token': data.word2id[CONSTANTS.PAD_WORD]
     })
 
-    model = baselines.FastText(**model_params)
+    model = decoders.SimpleDecoder(**model_params)
     print(model)
     m_params = [p for p in model.parameters() if p.requires_grad]
     optimizer = _config['optimizer']
@@ -84,7 +86,6 @@ def train(_config, _run):
         optimizer = optim.Adam(m_params, lr=_config['lr'])
     else:
         raise NotImplementedError()
-    loss_criterion = nn.NLLLoss()
     if use_gpu:
         model = model.cuda(gpu)
 
@@ -116,32 +117,26 @@ def train(_config, _run):
                                                   collate_fn=data_utils.collate_fn)
         test_data_iter = iter(test_data_loader)
         for src_data, src_lengths, src_labels in train_data_iter:
-            end_labels = Variable(torch.LongTensor([labels[-1] for labels in src_labels]))
+            labels = Variable(torch.LongTensor(src_labels))
             src_data = Variable(src_data)
             if use_gpu:
                 src_data = src_data.cuda(gpu)
-                end_labels = end_labels.cuda(gpu)
+                labels = labels.cuda(gpu)
             optimizer.zero_grad()
-            log_likelihood = model(src_data, src_lengths)
-            loss = loss_criterion(log_likelihood, end_labels)
+            loss, acc = model.batchNLLLoss(src_data, src_lengths, labels)
             loss.backward()
             optimizer.step()
             train_loss.append(loss.data[0])
-            _, predicted = torch.max(log_likelihood.data,1)
-            acc = (predicted == end_labels.data).sum() / len(end_labels)
             train_acc.append(acc)
         ## validate
         for src_data, src_lengths, src_labels in test_data_iter:
-            end_labels =  Variable(torch.LongTensor([labels[-1] for labels in src_labels]))
+            labels =  Variable(torch.LongTensor(src_labels))
             src_data = Variable(src_data)
             if use_gpu:
                 src_data = src_data.cuda(gpu)
-                end_labels = end_labels.cuda(gpu)
-            log_likelihood = model(src_data, src_lengths)
-            loss = loss_criterion(log_likelihood, end_labels)
+            labels = labels.cuda(gpu)
+            loss, acc = model.batchNLLLoss(src_data, src_lengths, labels, tf_ratio=0)
             validation_loss.append(loss.data[0])
-            _, predicted = torch.max(log_likelihood.data, 1)
-            acc = (predicted == end_labels.data).sum() / len(end_labels)
             validation_acc.append(acc)
         print('After Epoch {}'.format(epoch))
         print('Train Loss {}'.format(np.mean(train_loss)))
