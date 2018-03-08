@@ -29,7 +29,7 @@ writer = None
 
 @ex.config
 def exp_config():
-    gpu = 0
+    gpu = 3
     use_gpu = True
     exp_name = ''
     embedding_dim = 300

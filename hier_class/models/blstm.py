@@ -5,113 +5,156 @@ from torch.nn import Parameter
 
 torch.manual_seed(233)
 
-class EncoderRNN(nn.Module):
-    def __init__(self, config):
-        super(EncoderRNN, self).__init__()
-            self.vocab_size = config.vocab_size
-            self.embedding_dim = config.embedding_dim
-            self.position_size = config.position_size
-            self.position_dim = config.position_dim
 
-            self.word_input_size = config.word_input_size
-            self.sent_input_size = config.sent_input_size
-            self.word_LSTM_hidden_units = config.word_GRU_hidden_units
-            self.sent_LSTM_hidden_units = config.sent_GRU_hidden_units
-
-
-    def forward(self, x):  # list of tokens ex.x=[[1,2,1],[1,1]] x = Variable(torch.from_numpy(x)).cuda()
-        sequence_length = torch.sum(torch.sign(x), dim=1).data  # ex.=[3,2]-> size=2
-        sequence_num = sequence_length.size()[0]  # ex. N sentes
-
-        # word level LSTM
-        word_features = self.word_embedding(x)  # Input: LongTensor (N, W), Output: (N, W, embedding_dim)
-        word_outputs, _ = self.word_LSTM(word_features)  # output: word_outputs (N,W,h)
-        sent_features = self._avg_pooling(word_outputs, sequence_length).view(1, sequence_num,
-                                                                              self.sent_input_size)  # output:(1,N,h)
-
-        # sentence level LSTM
-        enc_output, hidden = self.sent_LSTM(sent_features)
-        return enc_output, hidden
-
-    # def initHidden(self):
-    #     weight = next(self.parameters()).data
-    #     return Variable(weight.new(self.n_layers, 1, self.hidden_size).zero_())
-
-
-class DecoderRNN(nn.Module):
-    def __init__(self, config):
-        super(DecoderRNN, self).__init__()
-        pass
+# Decoder based models
+import torch
+import torch.nn as nn
+from torch.autograd import Variable
+import random
+import numpy as np
 
 class BLSTM(nn.Module):
-    def __init__(self, config):
+    """
+    Simple hierarchical decoder. Like fastText, it first encodes the document once,
+    and then uses a GRU to predict the categories from a top-down approach.
+    """
+
+    def __init__(self, vocab_size=1, embedding_dim=300,
+                 category_emb_dim=64, hidden_size=200, label_size=1,
+                 pad_token=1, position_size=500, position_dim=50, **kwargs):
+        """
+
+        :param vocab_size:
+        :param embedding_dim:
+        :param category_emb_dim:
+        :param total_cats:
+        :param label_size: number of total categories
+        :param pad_token:
+        :param kwargs:
+        """
         super(BLSTM, self).__init__()
+        self.vocab_size = vocab_size
+        self.label_size = label_size
+        self.position_size = position_size
+        self.position_dim = position_dim
 
-        # Parameters
-        self.vocab_size = config.vocab_size
-        self.embedding_dim = config.embedding_dim
-        self.position_size = config.position_size
-        self.position_dim = config.position_dim
+        self.pad_token = pad_token
+        self.category_emb = category_emb_dim
 
-        self.num_classes = config.num_classes
-        self.class_embedding_dim = config.class_embedding_dim
-
-        self.word_input_size = config.word_input_size
-        self.sent_input_size = config.sent_input_size
-        self.word_LSTM_hidden_units = config.word_GRU_hidden_units
-        self.sent_LSTM_hidden_units = config.sent_GRU_hidden_units
-
-
-        # Network
-        self.word_embedding = nn.Embedding(self.vocab_size, self.embedding_dim)
-        self.word_embedding.weight.data.copy_(torch.from_numpy(config.pretrained_embedding))
-        self.position_embedding = nn.Embedding(self.position_size, self.position_dim)
-        self.class_embedding = nn.Embedding(self.num_classes, self.class_embedding_dim)
-        # maybe here we can copy the graph subject embedding here
-        # self.class_embedding.weight.data.copy_(torch.from_numpy(config.pretrained_embedding))
-
+        self.embedding = nn.Embedding(
+            vocab_size,
+            embedding_dim,
+            pad_token
+        )
+        self.position_embedding = nn.Embedding(
+            position_size,
+            position_dim
+        )
+        self.category_embedding = nn.Embedding(
+            label_size,
+            category_emb_dim
+        )
 
         self.word_LSTM = nn.LSTM(
-            input_size=self.word_input_size,
-            hidden_size=self.word_LSTM_hidden_units,
-            batch_first=True,
-            bidirectional=True)
+            input_size=embedding_dim,
+            hidden_size=hidden_size,
+            bidirectional=True
+        )
         self.sent_LSTM = nn.LSTM(
-            input_size=self.sent_input_size,
-            hidden_size=self.sent_LSTM_hidden_units,
-            num_layers=2,
-            batch_first=True,
-            bidirectional=True)
+            input_size=embedding_dim,
+            hidden_size=hidden_size,
+            bidirectional=True
+        )
+
+        self.decoder = nn.GRU(category_emb_dim, embedding_dim, batch_first=True)
+        self.decoder2linear = nn.Linear(embedding_dim, label_size)
+        self.logSoftMax = nn.LogSoftmax()
+
+    def init_weights(self):
+        initrange = 0.1
+        self.embedding.weight.data.uniform(-initrange, initrange)
+        nn.init.xavier_normal(
+            self.decoder2linear.weight,
+            gain=nn.init.calculate_gain('tanh')
+        )
+
+    def encode(self, src, src_lengths):
+        """
+        Encode the documents
+        :param src: documents
+        :param src_lengths: length of the documents
+        :return:
+        """
+        src_emb = self.embedding(src)
+        src_emb = torch.mean(src_emb,1)
+        return src_emb
+
+    def forward(self, categories, hidden_state):
+        """
+        :param src: document to classify
+        :param src_lengths: length of the documents
+        :param num_cats: number of times to unroll
+        :param categories: # keep starting category symbol as 0, such as
+                        categories = torch.zeros(batch_size,1)
+        :return:
+        """
+        cat_emb = self.category_embedding(categories)
+
+        output, hidden_state = self.decoder(cat_emb, hidden_state)
+
+        logits = self.decoder2linear(output)
+        out = self.logSoftMax(logits.view(-1, self.label_size))
+        return out, hidden_state
+
+    def batchNLLLoss(self, src, src_lengths, categories, tf_ratio=1.0):
+        """
+        Calculate the negative log likelihood loss while predicting the categories
+        :param src: documents to be classified
+        :param src_lengths: length of the docs
+        :param categories: hierarchical categories
+        :param tf_ratio: teacher forcing ratio
+        :return:
+        """
+        loss_fn = nn.NLLLoss()
+        loss = 0
+        accs = []
+        hidden_state = self.encode(src, src_lengths).unsqueeze(0)
+        cat_len = categories.size(1) - 1
+        out = None
+        use_tf = True if (random.random() < tf_ratio) else False
+        if use_tf:
+            for i in range(cat_len):
+                inp_cat = categories[:,i]
+                inp_cat = inp_cat.unsqueeze(1)
+                out, hidden_state = self.forward(inp_cat, hidden_state)
+                target_cat = categories[:,i+1]
+                loss += loss_fn(out, target_cat)
+                _, out_pred = torch.max(out.data, 1)
+                acc = (out_pred == target_cat.data).sum() / len(target_cat)
+                accs.append(acc)
+        else:
+            for i in range(cat_len):
+                if i == 0:
+                    inp_cat = categories[:,i].unsqueeze(1) # starting token
+                else:
+                    topv, topi = out.data.topk(1)
+                    inp_cat = Variable(topi)
+                out, hidden_state = self.forward(inp_cat, hidden_state)
+                target_cat = categories[:, i+1]
+                loss += loss_fn(out, target_cat)
+                _, out_pred = torch.max(out.data, 1)
+                acc = (out_pred == target_cat.data).sum() / len(target_cat)
+                accs.append(acc)
+
+        return loss, np.mean(accs)
 
 
-        # self.encoder = nn.Sequential(nn.Linear(800, 400),
-        #                              nn.Tanh())
 
-        self.decoder = nn.Sequential(nn.Linear(400, 100),
-                                     nn.Tanh(),
-                                     nn.Linear(100, self.num_classes),
-                                     nn.Softmax())
 
-    def _avg_pooling(self, x, sequence_length):
-        result = []
-        for index, data in enumerate(x):
-            avg_pooling = torch.mean(data[:sequence_length[index], :], dim=0)
-            result.append(avg_pooling)
-        return torch.cat(result, dim=0)
 
-    def forward(self, x):  # list of tokens ex.x=[[1,2,1],[1,1]] x = Variable(torch.from_numpy(x)).cuda()
-        sequence_length = torch.sum(torch.sign(x), dim=1).data  # ex.=[3,2]-> size=2
-        sequence_num = sequence_length.size()[0]  # ex. N sentes
 
-        # word level LSTM
-        word_features = self.word_embedding(x)  # Input: LongTensor (N, W), Output: (N, W, embedding_dim)
-        word_outputs, _ = self.word_LSTM(word_features)  # output: word_outputs (N,W,h)
-        sent_features = self._avg_pooling(word_outputs, sequence_length).view(1, sequence_num,
-                                                                              self.sent_input_size)  # output:(1,N,h)
 
-        # sentence level LSTM
-        enc_output, _ = self.sent_LSTM(sent_features)
 
-        prob = self.decoder(enc_output)
 
-        return prob.view(sequence_num, 1)
+
+
