@@ -53,6 +53,8 @@ def exp_config():
     epochs = 40
     level = 2
     cat_emb_dim = 64
+    tf_ratio=0.5
+    tf_anneal=0.8
 
 @ex.automain
 def train(_config, _run):
@@ -67,6 +69,9 @@ def train(_config, _run):
     )
     logging.info("Loading data")
     data.load(_config['data_type'],_config['data_loc'],_config['tokenization'])
+    test_data = copy.deepcopy(data)
+    test_data.data_mode = 'test'
+
     batch_size = _config['batch_size']
     gpu = _config['gpu']
     use_gpu = _config['use_gpu']
@@ -89,7 +94,7 @@ def train(_config, _run):
     if use_gpu:
         model = model.cuda(gpu)
 
-
+    tf_ratio = _config['tf_ratio']
     logging.info("Starting to train")
     pytorch_version = torch.__version__
     logging.info("Using pytorch version : {}".format(pytorch_version))
@@ -104,18 +109,20 @@ def train(_config, _run):
         logging.info("Getting data")
         logging.info("Num Train Rows: {}".format(len(data.train_indices)))
         logging.info("Num Test Rows: {}".format(len(data.test_indices)))
+        logging.info("TF Ratio: {}".format(tf_ratio))
         train_data_loader = torch.utils.data.DataLoader(dataset=data,
                                                   batch_size=batch_size,
                                                   shuffle=True,
-                                                  collate_fn=data_utils.collate_fn)
+                                                  collate_fn=data_utils.collate_fn,
+                                                  num_workers=8)
         train_data_iter = iter(train_data_loader)
-        test_data = copy.deepcopy(data)
-        test_data.data_mode = 'test'
         test_data_loader = torch.utils.data.DataLoader(dataset=test_data,
                                                   batch_size=batch_size,
                                                   shuffle=True,
-                                                  collate_fn=data_utils.collate_fn)
+                                                  collate_fn=data_utils.collate_fn,
+                                                  num_workers=8)
         test_data_iter = iter(test_data_loader)
+        logging.info("Got data")
         for src_data, src_lengths, src_labels in train_data_iter:
             labels = Variable(torch.LongTensor(src_labels))
             src_data = Variable(src_data)
@@ -123,7 +130,7 @@ def train(_config, _run):
                 src_data = src_data.cuda(gpu)
                 labels = labels.cuda(gpu)
             optimizer.zero_grad()
-            loss, acc = model.batchNLLLoss(src_data, src_lengths, labels,tf_ratio=0.5)
+            loss, acc = model.batchNLLLoss(src_data, src_lengths, labels,tf_ratio=tf_ratio)
             loss.backward()
             optimizer.step()
             train_loss.append(loss.data[0])
@@ -143,6 +150,8 @@ def train(_config, _run):
         print('Validation loss {}'.format(np.mean(validation_loss)))
         print('Train accuracy {}'.format(np.mean(train_acc)))
         print('Validation accuracy {}'.format(np.mean(validation_acc)))
+        ## anneal
+        tf_ratio = tf_ratio * _config['tf_anneal']
 
 
 
