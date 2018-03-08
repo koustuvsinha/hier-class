@@ -3,6 +3,7 @@
 ## TODO: Use torch.DataLoader for efficient batch representations
 
 import torch
+import torch.utils.data as data
 from torch.autograd import Variable
 import os
 from os.path import dirname, abspath
@@ -19,7 +20,7 @@ logging.basicConfig(
     format='%(asctime)s - %(levelname)s - %(message)s'
 )
 
-class Data_Utility():
+class Data_Utility(data.Dataset):
     def __init__(self, exp_name='', train_test_split=0.8, decoder_ready=False):
         """
 

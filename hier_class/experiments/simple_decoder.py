@@ -1,6 +1,5 @@
 # Experiment on simple decoder classification
 
-# CUDA_VISIBLE_DEVICES=4 python simple_decoder.py with exp_name=decode_context batch_size=64
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -24,13 +23,14 @@ from tqdm import tqdm
 from hier_class.utils import data as data_utils
 from hier_class.models import decoders
 from hier_class.utils import constants as CONSTANTS
+from hier_class.utils import model_utils as mu
 
 ex = Experiment()
 writer = None
 
 @ex.config
 def exp_config():
-    gpu = 2
+    gpu = 0
     use_gpu = True
     exp_name = ''
     embedding_dim = 300
@@ -54,20 +54,25 @@ def exp_config():
     epochs = 40
     level = 2
     cat_emb_dim = 64
+    tf_ratio=0.5
+    tf_anneal=0.8
 
 @ex.automain
 def train(_config, _run):
     # bookkeeping
-    # if len(_config['exp_name']) < 1:
-    #     _config['exp_name'] = _run.start_time.strftime('%Y-%m-%d_%H:%M:%S')
+    if len(_config['exp_name']) < 1:
+        _config['exp_name'] = _run.start_time.strftime('%Y-%m-%d_%H:%M:%S')
     #writer = SummaryWriter(log_dir='../../logs/' + _config['exp_name'])
     data = data_utils.Data_Utility(
-        #exp_name=_config['exp_name'],
+        exp_name=_config['exp_name'],
         train_test_split=_config['train_test_split'],
         decoder_ready=True
     )
     logging.info("Loading data")
     data.load(_config['data_type'],_config['data_loc'],_config['tokenization'])
+    test_data = copy.deepcopy(data)
+    test_data.data_mode = 'test'
+
     batch_size = _config['batch_size']
     gpu = _config['gpu']
     use_gpu = _config['use_gpu']
@@ -90,7 +95,7 @@ def train(_config, _run):
     if use_gpu:
         model = model.cuda(gpu)
 
-
+    tf_ratio = _config['tf_ratio']
     logging.info("Starting to train")
     pytorch_version = torch.__version__
     logging.info("Using pytorch version : {}".format(pytorch_version))
@@ -105,18 +110,20 @@ def train(_config, _run):
         logging.info("Getting data")
         logging.info("Num Train Rows: {}".format(len(data.train_indices)))
         logging.info("Num Test Rows: {}".format(len(data.test_indices)))
+        logging.info("TF Ratio: {}".format(tf_ratio))
         train_data_loader = torch.utils.data.DataLoader(dataset=data,
                                                   batch_size=batch_size,
                                                   shuffle=True,
-                                                  collate_fn=data_utils.collate_fn)
+                                                  collate_fn=data_utils.collate_fn,
+                                                  num_workers=8)
         train_data_iter = iter(train_data_loader)
-        test_data = copy.deepcopy(data)
-        test_data.data_mode = 'test'
         test_data_loader = torch.utils.data.DataLoader(dataset=test_data,
                                                   batch_size=batch_size,
                                                   shuffle=True,
-                                                  collate_fn=data_utils.collate_fn)
+                                                  collate_fn=data_utils.collate_fn,
+                                                  num_workers=8)
         test_data_iter = iter(test_data_loader)
+        logging.info("Got data")
         for src_data, src_lengths, src_labels in train_data_iter:
             labels = Variable(torch.LongTensor(src_labels))
             src_data = Variable(src_data)
@@ -124,11 +131,11 @@ def train(_config, _run):
                 src_data = src_data.cuda(gpu)
                 labels = labels.cuda(gpu)
             optimizer.zero_grad()
-            loss, acc = model.batchNLLLoss(src_data, src_lengths, labels,tf_ratio=0.5)
+            loss, accs = model.batchNLLLoss(src_data, src_lengths, labels,tf_ratio=tf_ratio)
             loss.backward()
             optimizer.step()
             train_loss.append(loss.data[0])
-            train_acc.append(acc)
+            train_acc.append(accs)
         ## validate
         for src_data, src_lengths, src_labels in test_data_iter:
             labels =  Variable(torch.LongTensor(src_labels))
@@ -136,14 +143,20 @@ def train(_config, _run):
             if use_gpu:
                 src_data = src_data.cuda(gpu)
             labels = labels.cuda(gpu)
-            loss, acc = model.batchNLLLoss(src_data, src_lengths, labels, tf_ratio=0)
+            loss, accs = model.batchNLLLoss(src_data, src_lengths, labels, tf_ratio=0)
             validation_loss.append(loss.data[0])
-            validation_acc.append(acc)
+            validation_acc.append(accs)
         print('After Epoch {}'.format(epoch))
         print('Train Loss {}'.format(np.mean(train_loss)))
         print('Validation loss {}'.format(np.mean(validation_loss)))
-        print('Train accuracy {}'.format(np.mean(train_acc)))
-        print('Validation accuracy {}'.format(np.mean(validation_acc)))
+        for level in range(3):
+            print('Train accuracy for level {} : {}'.format(level, np.mean([tr[level] for tr in train_acc])))
+            print('Validation accuracy for level {} : {}'.format(level, np.mean([vd[level] for vd in validation_acc])))
+        ## anneal
+        tf_ratio = tf_ratio * _config['tf_anneal']
+        ## saving model
+        mu.save_model(model,epoch,0,_config['exp_name'],model_params)
+
 
 
 

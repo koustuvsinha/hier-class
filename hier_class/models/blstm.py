@@ -5,7 +5,6 @@ from torch.nn import Parameter
 
 torch.manual_seed(233)
 
-
 # Decoder based models
 import torch
 import torch.nn as nn
