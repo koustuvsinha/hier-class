@@ -36,7 +36,7 @@ class SimpleDecoder(nn.Module):
             label_size,
             category_emb_dim
         )
-        self.decoder = nn.GRU(category_emb_dim, embedding_dim, batch_first=True)
+        self.decoder = nn.GRU(category_emb_dim, embedding_dim, batch_first=True,dropout = 0.5)
         self.decoder2linear = nn.Linear(embedding_dim, label_size)
         self.logSoftMax = nn.LogSoftmax()
 
