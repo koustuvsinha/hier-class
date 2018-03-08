@@ -76,6 +76,7 @@ def train(_config, _run):
     batch_size = _config['batch_size']
     gpu = _config['gpu']
     use_gpu = _config['use_gpu']
+    torch.cuda.set_device(gpu)
     model_params = copy.deepcopy(_config)
     logging.info('Classes in level {} = {}'.format(_config['level'], len(data.get_level_labels(_config['level']))))
     model_params.update({
@@ -89,7 +90,7 @@ def train(_config, _run):
     m_params = [p for p in model.parameters() if p.requires_grad]
     optimizer = _config['optimizer']
     if optimizer == 'adam':
-        optimizer = optim.Adam(m_params, lr=_config['lr'])
+        optimizer = optim.Adam(m_params, lr=_config['lr'], weight_decay=1e-6)
     else:
         raise NotImplementedError()
     if use_gpu:
