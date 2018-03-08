@@ -128,7 +128,7 @@ class SimpleDecoder(nn.Module):
                 acc = (out_pred == target_cat.data).sum() / len(target_cat)
                 accs.append(acc)
 
-        return loss, np.mean(accs)
+        return loss, accs
 
 
 

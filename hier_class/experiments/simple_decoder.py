@@ -23,13 +23,14 @@ from tqdm import tqdm
 from hier_class.utils import data as data_utils
 from hier_class.models import decoders
 from hier_class.utils import constants as CONSTANTS
+from hier_class.utils import model_utils as mu
 
 ex = Experiment()
 writer = None
 
 @ex.config
 def exp_config():
-    gpu = 3
+    gpu = 0
     use_gpu = True
     exp_name = ''
     embedding_dim = 300
@@ -130,11 +131,11 @@ def train(_config, _run):
                 src_data = src_data.cuda(gpu)
                 labels = labels.cuda(gpu)
             optimizer.zero_grad()
-            loss, acc = model.batchNLLLoss(src_data, src_lengths, labels,tf_ratio=tf_ratio)
+            loss, accs = model.batchNLLLoss(src_data, src_lengths, labels,tf_ratio=tf_ratio)
             loss.backward()
             optimizer.step()
             train_loss.append(loss.data[0])
-            train_acc.append(acc)
+            train_acc.append(accs)
         ## validate
         for src_data, src_lengths, src_labels in test_data_iter:
             labels =  Variable(torch.LongTensor(src_labels))
@@ -142,16 +143,20 @@ def train(_config, _run):
             if use_gpu:
                 src_data = src_data.cuda(gpu)
             labels = labels.cuda(gpu)
-            loss, acc = model.batchNLLLoss(src_data, src_lengths, labels, tf_ratio=0)
+            loss, accs = model.batchNLLLoss(src_data, src_lengths, labels, tf_ratio=0)
             validation_loss.append(loss.data[0])
-            validation_acc.append(acc)
+            validation_acc.append(accs)
         print('After Epoch {}'.format(epoch))
         print('Train Loss {}'.format(np.mean(train_loss)))
         print('Validation loss {}'.format(np.mean(validation_loss)))
-        print('Train accuracy {}'.format(np.mean(train_acc)))
-        print('Validation accuracy {}'.format(np.mean(validation_acc)))
+        for level in range(3):
+            print('Train accuracy for level {} : {}'.format(level, np.mean([tr[level] for tr in train_acc])))
+            print('Validation accuracy for level {} : {}'.format(level, np.mean([vd[level] for vd in validation_acc])))
         ## anneal
         tf_ratio = tf_ratio * _config['tf_anneal']
+        ## saving model
+        mu.save_model(model,epoch,0,_config['exp_name'],model_params)
+
 
 
 
