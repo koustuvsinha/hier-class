@@ -1,5 +1,6 @@
 # Experiment on simple decoder classification
 
+# CUDA_VISIBLE_DEVICES=4 python simple_decoder.py with exp_name=decode_context batch_size=64
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -29,7 +30,7 @@ writer = None
 
 @ex.config
 def exp_config():
-    gpu = 3
+    gpu = 2
     use_gpu = True
     exp_name = ''
     embedding_dim = 300
@@ -57,11 +58,11 @@ def exp_config():
 @ex.automain
 def train(_config, _run):
     # bookkeeping
-    if len(_config['exp_name']) < 1:
-        _config['exp_name'] = _run.start_time.strftime('%Y-%m-%d_%H:%M:%S')
+    # if len(_config['exp_name']) < 1:
+    #     _config['exp_name'] = _run.start_time.strftime('%Y-%m-%d_%H:%M:%S')
     #writer = SummaryWriter(log_dir='../../logs/' + _config['exp_name'])
     data = data_utils.Data_Utility(
-        exp_name=_config['exp_name'],
+        #exp_name=_config['exp_name'],
         train_test_split=_config['train_test_split'],
         decoder_ready=True
     )
