@@ -101,7 +101,12 @@ class Data_Utility(data.Dataset):
                 l_3 = gen_class_id(row, 'l3')
                 y_classes.append([l_1,l_2,l_3])
                 text = row['text']
-                text = self.tokenize(str(text), mode=tokenization)
+                if '<sent>' in text:
+                    # data has been sentence tokenized
+                    text = text.split('<sent>')
+                    text = [self.tokenize(str(t), mode=tokenization) for t in text]
+                else:
+                    text = self.tokenize(str(text), mode=tokenization)
                 text_data.append(text)
                 items.update(text)
 
