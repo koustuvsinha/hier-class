@@ -24,9 +24,9 @@ from hier_class.utils import data as data_utils
 from hier_class.models import decoders
 from hier_class.utils import constants as CONSTANTS
 from hier_class.utils import model_utils as mu
+from hier_class.utils.stats import Statistics
 
 ex = Experiment()
-writer = None
 
 @ex.config
 def exp_config():
@@ -42,7 +42,7 @@ def exp_config():
     load_model_path = ''
     save_name = 'model_epoch_{}_step_{}.mod'
     optimizer = 'adam'
-    lr = 1e-3
+    lr = 1e-2
     log_interval = 200
     save_interval = 1000
     train_test_split = 0.8
@@ -56,13 +56,15 @@ def exp_config():
     cat_emb_dim = 64
     tf_ratio=0.5
     tf_anneal=0.8
+    weight_decay=1e-6
+    temperature = 0.9
 
 @ex.automain
 def train(_config, _run):
     # bookkeeping
     if len(_config['exp_name']) < 1:
         _config['exp_name'] = _run.start_time.strftime('%Y-%m-%d_%H:%M:%S')
-    #writer = SummaryWriter(log_dir='../../logs/' + _config['exp_name'])
+    writer = SummaryWriter(log_dir='../../logs/' + _config['exp_name'])
     data = data_utils.Data_Utility(
         exp_name=_config['exp_name'],
         train_test_split=_config['train_test_split'],
@@ -90,7 +92,7 @@ def train(_config, _run):
     m_params = [p for p in model.parameters() if p.requires_grad]
     optimizer = _config['optimizer']
     if optimizer == 'adam':
-        optimizer = optim.Adam(m_params, lr=_config['lr'], weight_decay=1e-6)
+        optimizer = optim.Adam(m_params, lr=_config['lr'], weight_decay=_config['weight_decay'])
     else:
         raise NotImplementedError()
     if use_gpu:
@@ -101,13 +103,10 @@ def train(_config, _run):
     pytorch_version = torch.__version__
     logging.info("Using pytorch version : {}".format(pytorch_version))
     epochs = _config['epochs']
+    stats = Statistics(batch_size,3,_config['exp_name'])
     all_step = 0
-    calc_start = time.time()
     for epoch in range(epochs):
-        train_loss = []
-        validation_loss = []
-        train_acc = []
-        validation_acc = []
+        stats.next()
         logging.info("Getting data")
         logging.info("Num Train Rows: {}".format(len(data.train_indices)))
         logging.info("Num Test Rows: {}".format(len(data.test_indices)))
@@ -135,8 +134,7 @@ def train(_config, _run):
             loss, accs = model.batchNLLLoss(src_data, src_lengths, labels,tf_ratio=tf_ratio)
             loss.backward()
             optimizer.step()
-            train_loss.append(loss.data[0])
-            train_acc.append(accs)
+            stats.update_train(loss.data[0], accs)
         ## validate
         for src_data, src_lengths, src_labels in test_data_iter:
             labels =  Variable(torch.LongTensor(src_labels))
@@ -145,18 +143,14 @@ def train(_config, _run):
                 src_data = src_data.cuda(gpu)
             labels = labels.cuda(gpu)
             loss, accs = model.batchNLLLoss(src_data, src_lengths, labels, tf_ratio=0)
-            validation_loss.append(loss.data[0])
-            validation_acc.append(accs)
-        print('After Epoch {}'.format(epoch))
-        print('Train Loss {}'.format(np.mean(train_loss)))
-        print('Validation loss {}'.format(np.mean(validation_loss)))
-        for level in range(3):
-            print('Train accuracy for level {} : {}'.format(level, np.mean([tr[level] for tr in train_acc])))
-            print('Validation accuracy for level {} : {}'.format(level, np.mean([vd[level] for vd in validation_acc])))
+            stats.update_validation(loss.data[0],accs)
+        stats.log_loss()
         ## anneal
         tf_ratio = tf_ratio * _config['tf_anneal']
         ## saving model
         mu.save_model(model,epoch,0,_config['exp_name'],model_params)
+
+    stats.cleanup()
 
 
 

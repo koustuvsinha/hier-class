@@ -144,7 +144,7 @@ class DataCollector():
             sents = sent_tokenize(page)
             sent_chunks = list(chunks(sents, sent_per_doc))
             cand = sent_chunks[:num_docs]
-            cand = [' '.join(c) for c in cand]
+            cand = ['<sent>'.join(c) for c in cand]
             return cand
         else:
             return []
@@ -321,7 +321,7 @@ if __name__=='__main__':
     pb.close()
     print("Final Statistics")
     print("Total num rows: {}".format(len(df)))
-    df.to_csv('full_docs_3.csv',index=None)
+    df.to_csv('full_docs_sent.csv',index=None)
 
 
 

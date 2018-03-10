@@ -1,9 +1,11 @@
 # Decoder based models
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 from torch.autograd import Variable
 import random
 import numpy as np
+
 
 class SimpleDecoder(nn.Module):
     """
@@ -11,7 +13,8 @@ class SimpleDecoder(nn.Module):
     and then uses a GRU to predict the categories from a top-down approach.
     """
 
-    def __init__(self, vocab_size=1, embedding_dim=300, category_emb_dim=64, label_size=1, pad_token=1, **kwargs):
+    def __init__(self, vocab_size=1, embedding_dim=300, category_emb_dim=64, label_size=1, pad_token=1,
+                 temperature=0.8,**kwargs):
         """
 
         :param vocab_size:
@@ -28,6 +31,7 @@ class SimpleDecoder(nn.Module):
         self.pad_token = pad_token
         self.category_emb = category_emb_dim
         self.embedding_dim = embedding_dim
+        self.temperature = temperature
         self.embedding = nn.Embedding(
             vocab_size,
             embedding_dim,
@@ -40,7 +44,7 @@ class SimpleDecoder(nn.Module):
         self.decoder = nn.GRU(category_emb_dim, embedding_dim*2, batch_first=True, dropout=0.5)
         self.hidden2next = nn.Linear(embedding_dim*2, embedding_dim)
         self.decoder2linear = nn.Linear(embedding_dim*2, label_size)
-        self.logSoftMax = nn.LogSoftmax()
+        #self.logSoftMax = nn.LogSoftmax()
         #self.init_weights()
 
     def init_weights(self):
@@ -54,6 +58,9 @@ class SimpleDecoder(nn.Module):
     def init_hidden(self, batch_size, gpu=0):
         hidden = Variable(torch.zeros(1, batch_size, self.embedding_dim)).cuda(gpu)
         return hidden
+
+    def temp_logsoftmax(self, y, temperature):
+        return F.log_softmax(y / temperature, dim=-1)
 
 
     def encode(self, src, src_lengths):
@@ -82,7 +89,7 @@ class SimpleDecoder(nn.Module):
         output, hidden_state = self.decoder(cat_emb, hidden_state)
 
         logits = self.decoder2linear(output)
-        out = self.logSoftMax(logits.view(-1, self.label_size))
+        out = self.temp_logsoftmax(logits.view(-1, self.label_size), self.temperature)
         return out, self.hidden2next(hidden_state)
 
     def batchNLLLoss(self, src, src_lengths, categories, tf_ratio=1.0):
