@@ -42,12 +42,13 @@ def exp_config():
     load_model_path = ''
     save_name = 'model_epoch_{}_step_{}.mod'
     optimizer = 'adam'
-    lr = 1e-2
+    lr = 1e-3
     log_interval = 200
     save_interval = 1000
     train_test_split = 0.8
     data_type = 'WIKI'
-    data_loc = '/home/ml/ksinha4/mlp/hier-class/data/'
+    data_loc = '/home/ml/ksinha4/datasets/data_WIKI'
+    file_name = 'full_docs_2.csv'
     #data_loc = '/home/ml/ksinha4/datasets/data_WOS/WebOfScience/WOS46985'
     tokenization = 'word'
     batch_size = 16
@@ -57,7 +58,9 @@ def exp_config():
     tf_ratio=0.5
     tf_anneal=0.8
     weight_decay=1e-6
-    temperature = 0.9
+    temperature = 1
+    loss_focus = [1,1,1]
+    label_weights = [1,1,1]
 
 @ex.automain
 def train(_config, _run):
@@ -71,14 +74,13 @@ def train(_config, _run):
         decoder_ready=True
     )
     logging.info("Loading data")
-    data.load(_config['data_type'],_config['data_loc'],_config['tokenization'])
+    data.load(_config['data_type'],_config['data_loc'],_config['file_name'],_config['tokenization'])
     test_data = copy.deepcopy(data)
     test_data.data_mode = 'test'
 
     batch_size = _config['batch_size']
     gpu = _config['gpu']
     use_gpu = _config['use_gpu']
-    torch.cuda.set_device(gpu)
     model_params = copy.deepcopy(_config)
     logging.info('Classes in level {} = {}'.format(_config['level'], len(data.get_level_labels(_config['level']))))
     model_params.update({
@@ -87,7 +89,21 @@ def train(_config, _run):
         'pad_token': data.word2id[CONSTANTS.PAD_WORD]
     })
 
-    model = decoders.SimpleDecoder(**model_params)
+    ## calculate label weights
+    level2w = {}
+    for li,lw in enumerate(_config['label_weights']):
+        level2w[li] = lw
+    label_weights = [0.0]
+    for level in range(3):
+        labels = list(sorted(data.get_level_labels(level)))
+        for lb in labels:
+            label_weights.append(level2w[level])
+    label_weights = torch.FloatTensor(label_weights)
+    label_weights = label_weights.cuda(gpu)
+
+
+    #model = decoders.SimpleDecoder(**model_params)
+    model = decoders.SimpleMLPDecoder(**model_params)
     print(model)
     m_params = [p for p in model.parameters() if p.requires_grad]
     optimizer = _config['optimizer']
@@ -104,6 +120,8 @@ def train(_config, _run):
     logging.info("Using pytorch version : {}".format(pytorch_version))
     epochs = _config['epochs']
     stats = Statistics(batch_size,3,_config['exp_name'])
+    logging.info("With focus : {}".format(_config['loss_focus']))
+    logging.info("With label weights : {}".format(_config['label_weights']))
     all_step = 0
     for epoch in range(epochs):
         stats.next()
@@ -131,7 +149,9 @@ def train(_config, _run):
                 src_data = src_data.cuda(gpu)
                 labels = labels.cuda(gpu)
             optimizer.zero_grad()
-            loss, accs = model.batchNLLLoss(src_data, src_lengths, labels,tf_ratio=tf_ratio)
+            loss, accs = model.batchNLLLoss(src_data, src_lengths, labels,tf_ratio=tf_ratio,
+                                            loss_focus=_config['loss_focus'],
+                                            loss_weights=label_weights)
             loss.backward()
             optimizer.step()
             stats.update_train(loss.data[0], accs)
@@ -142,13 +162,16 @@ def train(_config, _run):
             if use_gpu:
                 src_data = src_data.cuda(gpu)
             labels = labels.cuda(gpu)
-            loss, accs = model.batchNLLLoss(src_data, src_lengths, labels, tf_ratio=0)
+            loss, accs = model.batchNLLLoss(src_data, src_lengths, labels, tf_ratio=0,
+                                            loss_focus=_config['loss_focus'],
+                                            loss_weights=label_weights)
             stats.update_validation(loss.data[0],accs)
         stats.log_loss()
         ## anneal
         tf_ratio = tf_ratio * _config['tf_anneal']
         ## saving model
-        mu.save_model(model,epoch,0,_config['exp_name'],model_params)
+        if epoch % 10 == 0:
+            mu.save_model(model,epoch,0,_config['exp_name'],model_params)
 
     stats.cleanup()
 

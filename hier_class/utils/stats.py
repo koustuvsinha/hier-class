@@ -41,7 +41,6 @@ class Statistics():
 
     def get_train_loss(self, epoch=0):
         start_index = epoch*self.batch_size
-        print(start_index)
         return np.mean(self.train_loss[start_index:])
 
     def get_valid_loss(self, epoch=0):
@@ -60,8 +59,6 @@ class Statistics():
 
     def log_loss(self):
         time_taken = time.time() - self.calc_start
-        print(len(self.train_loss))
-        print(len(self.train_accuracy))
         logging.info('Time taken: {}'.format(time_taken * 1000))
         logging.info("After Epoch {}".format(self.epoch))
         logging.info("Train Loss : {}".format(self.get_train_loss(self.epoch)))

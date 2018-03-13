@@ -42,7 +42,7 @@ class Data_Utility(data.Dataset):
         if not os.path.exists(self.save_path_base):
             os.makedirs(self.save_path_base)
 
-    def preprocess(self, data_type='', data_loc='', tokenization='word'):
+    def preprocess(self, data_type='', data_loc='', file_name='full_docs_2.csv', tokenization='word'):
         """
         Given data type and location, load and preprocess in an uniform format
         Also create dynamic dictionaries here
@@ -83,7 +83,7 @@ class Data_Utility(data.Dataset):
             for i in range(len(y_1)):
                 y_classes.append([y_1[i],y_2[i],y_3[i]])
         elif data_type == 'WIKI':
-            df = pandas.read_csv(data_loc + '/full_docs_2.csv')
+            df = pandas.read_csv(data_loc + '/' + file_name)
             y_class2id = {'l1':{},'l2':{},'l3':{}}
             ct_dict = {'l1':0,'l2':0,'l3':0}
 
@@ -190,12 +190,12 @@ class Data_Utility(data.Dataset):
         id2word = {v:k for k,v in word2id.items()}
         return word2id, id2word
 
-    def load(self, data_type='', data_loc='', tokenization='word'):
+    def load(self, data_type='', data_loc='', file_name='', tokenization='word'):
         ## Load previously preprocessed data, and add to the object
         save_loc = self.save_path_base + '/{}_processed_{}.json'.format(data_type, tokenization)
         if not os.path.exists(save_loc):
             logging.info("Preprocessing...")
-            processed_dict = self.preprocess(data_type, data_loc, tokenization)
+            processed_dict = self.preprocess(data_type, data_loc, file_name, tokenization)
         else:
             logging.info("Loading previously preprocessed data...")
             processed_dict = json.load(open(save_loc))
