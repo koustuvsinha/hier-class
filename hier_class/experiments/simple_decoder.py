@@ -48,12 +48,13 @@ def exp_config():
     train_test_split = 0.8
     data_type = 'WIKI'
     data_loc = '/home/ml/ksinha4/datasets/data_WIKI'
-    file_name = 'full_docs_2.csv'
+    file_name = 'small_sent.csv'
     #data_loc = '/home/ml/ksinha4/datasets/data_WOS/WebOfScience/WOS46985'
     tokenization = 'word'
     batch_size = 16
-    epochs = 40
+    epochs = 60
     level = 2
+    levels = 3
     cat_emb_dim = 64
     tf_ratio=0.5
     tf_anneal=0.8
@@ -82,17 +83,25 @@ def train(_config, _run):
     gpu = _config['gpu']
     use_gpu = _config['use_gpu']
     model_params = copy.deepcopy(_config)
-    logging.info('Classes in level {} = {}'.format(_config['level'], len(data.get_level_labels(_config['level']))))
+    tot_levels = 0
+    for level in range(_config['levels']):
+        nl = len(data.get_level_labels(level))
+        logging.info('Classes in level {} = {}'.format(level, nl))
+        tot_levels += nl
     model_params.update({
         'vocab_size': len(data.word2id),
         'label_size': data.decoder_num_labels,
-        'pad_token': data.word2id[CONSTANTS.PAD_WORD]
+        'pad_token': data.word2id[CONSTANTS.PAD_WORD],
+        'total_cats': tot_levels
     })
 
     ## calculate label weights
+    ## for level1 labels = 1.0
+    ## for level2 labels = 0.8
+    ## for level3 labels = 0.6
     level2w = {}
-    for li,lw in enumerate(_config['label_weights']):
-        level2w[li] = lw
+    for i,lb in enumerate(_config['label_weights']):
+        level2w[i] = lb
     label_weights = [0.0]
     for level in range(3):
         labels = list(sorted(data.get_level_labels(level)))
@@ -121,7 +130,6 @@ def train(_config, _run):
     epochs = _config['epochs']
     stats = Statistics(batch_size,3,_config['exp_name'])
     logging.info("With focus : {}".format(_config['loss_focus']))
-    logging.info("With label weights : {}".format(_config['label_weights']))
     all_step = 0
     for epoch in range(epochs):
         stats.next()
@@ -170,8 +178,7 @@ def train(_config, _run):
         ## anneal
         tf_ratio = tf_ratio * _config['tf_anneal']
         ## saving model
-        if epoch % 10 == 0:
-            mu.save_model(model,epoch,0,_config['exp_name'],model_params)
+        mu.save_model(model,epoch,0,_config['exp_name'],model_params)
 
     stats.cleanup()
 

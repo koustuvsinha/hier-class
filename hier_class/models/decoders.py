@@ -157,7 +157,7 @@ class SimpleMLPDecoder(nn.Module):
     Simple hierarchical MLP decoder. Doesn't use a GRU, instead uses an MLP to classify per step.
     """
 
-    def __init__(self, vocab_size=1, embedding_dim=300, cat_emb_dim=64, label_size=1, pad_token=1,
+    def __init__(self, vocab_size=1, embedding_dim=300, cat_emb_dim=64, label_size=1, total_cats=1,pad_token=1,
                  temperature=0.8,**kwargs):
         """
 
@@ -175,19 +175,16 @@ class SimpleMLPDecoder(nn.Module):
         self.pad_token = pad_token
         self.embedding_dim = embedding_dim
         self.temperature = temperature
-        self.cat_emb_dim = cat_emb_dim
         self.embedding = nn.Embedding(
             vocab_size,
             embedding_dim,
             pad_token
         )
         self.category_embedding = nn.Embedding(
-            label_size,
-            self.cat_emb_dim
+            total_cats,
+            cat_emb_dim
         )
         self.linear = nn.Linear(embedding_dim + cat_emb_dim, label_size)
-        #self.relu = nn.ReLU()
-        #self.hidden2class = nn.Linear(embedding_dim, label_size)
         self.logSoftMax = nn.LogSoftmax()
 
 
@@ -219,17 +216,17 @@ class SimpleMLPDecoder(nn.Module):
         src_emb = torch.mean(src_emb,1)
         return src_emb
 
-    def forward(self, doc_emb, category):
+    def forward(self, doc_emb, inp_cat):
         """
 
         :param doc_emb:
         :param hidden_state:
         :return:
         """
-        cat_emb = self.category_embedding(category)
+        cat_emb = self.category_embedding(inp_cat)
         x = torch.cat((doc_emb, cat_emb), 1)
         x = self.linear(x)
-        logits = self.logSoftMax(x.view(-1, self.label_size))
+        logits = self.logSoftMax(x)
 
         return logits
 
@@ -247,6 +244,7 @@ class SimpleMLPDecoder(nn.Module):
         loss = 0
         accs = []
         context_state = self.encode(src, src_lengths)
+        hidden_state = self.init_hidden(context_state.size(0))
         cat_len = categories.size(1) - 1
         assert cat_len == 3
         out = None
