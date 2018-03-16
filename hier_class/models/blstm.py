@@ -85,7 +85,7 @@ class BLSTM(nn.Module):
         :param src_lengths: length of the documents
         :return:
         """
-        src_emb = self.embedding(src)
+        src_emb = self.embedding(src) #need to check if sentence info is preserved
         src_emb = torch.mean(src_emb,1)
         return src_emb
 

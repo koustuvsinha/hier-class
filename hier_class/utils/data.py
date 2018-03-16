@@ -82,7 +82,7 @@ class Data_Utility():
             for i in range(len(y_1)):
                 y_classes.append([y_1[i],y_2[i],y_3[i]])
         elif data_type == 'WIKI':
-            df = pandas.read_csv(data_loc + '/full_docs_2.csv')
+            df = pandas.read_csv(data_loc + '/full_docs_sent.csv')
             y_class2id = {'l1':{},'l2':{},'l3':{}}
             ct_dict = {'l1':0,'l2':0,'l3':0}
 
