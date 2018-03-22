@@ -209,6 +209,8 @@ class Data_Utility(data.Dataset):
             # fix the labels. during data collection, the labels where taken as unique id per level.
             # to make all levels unique here for the decoder to work, we need to make them sequential
             label2id = {}
+            # save a hierarchy of decoder levels
+            taxonomy = {}
             # get the max number of labels per level
             max_levels = max([len(label) for label in self.labels])
             ct  = 1
@@ -225,6 +227,19 @@ class Data_Utility(data.Dataset):
                     row_labels.append(label2id['l{}_{}'.format(i,label)])
                 self.decoder_labels.append(row_labels)
             self.decoder_num_labels = ct
+            # build the taxonomy
+            taxonomy[0] = set()
+            for labels in self.labels:
+                new_dec_labels = [label2id['l{}_{}'.format(level,label)] for level,label in enumerate(labels)]
+                parent = 0
+                for dec_label in new_dec_labels:
+                    if parent not in taxonomy:
+                        taxonomy[parent] = set()
+                    taxonomy[parent].add(dec_label)
+                    parent = dec_label
+            self.taxonomy = taxonomy
+            self.label2id = label2id
+            self.id2label = {v:k for k,v in label2id.items()}
 
         self.split_indices()
 
@@ -308,7 +323,7 @@ class Data_Utility(data.Dataset):
             rows = self.test_indices
         data = self.data[rows[index]]
         data = [self.word2id[word] for word in data]
-        labels = self.labels[rows[index]]
+        #labels = self.labels[rows[index]]
         if self.decoder_ready:
             labels = self.decoder_labels[rows[index]]
         data = torch.LongTensor(data)

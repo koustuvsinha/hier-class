@@ -5,6 +5,8 @@ import torch.nn.functional as F
 from torch.autograd import Variable
 import random
 import numpy as np
+import time
+import pdb
 
 
 class SimpleDecoder(nn.Module):
@@ -157,8 +159,11 @@ class SimpleMLPDecoder(nn.Module):
     Simple hierarchical MLP decoder. Doesn't use a GRU, instead uses an MLP to classify per step.
     """
 
-    def __init__(self, vocab_size=1, embedding_dim=300, cat_emb_dim=64, label_size=1, total_cats=1,pad_token=1,
-                 temperature=0.8,**kwargs):
+    def __init__(self, vocab_size=1, embedding_dim=300, cat_emb_dim=64, label_size=1,
+                 label_sizes=[], label2id={},
+                 total_cats=1,pad_token=1,
+                 taxonomy=None,temperature=0.8,
+                 **kwargs):
         """
 
         :param vocab_size:
@@ -167,14 +172,17 @@ class SimpleMLPDecoder(nn.Module):
         :param total_cats:
         :param label_size: number of total categories
         :param pad_token:
+        :param taxonomy: hierarchy of labels
         :param kwargs:
         """
         super(SimpleMLPDecoder, self).__init__()
         self.vocab_size = vocab_size
         self.label_size = label_size
+        self.label_sizes = label_sizes
         self.pad_token = pad_token
         self.embedding_dim = embedding_dim
         self.temperature = temperature
+        self.label2id = label2id
         self.embedding = nn.Embedding(
             vocab_size,
             embedding_dim,
@@ -185,7 +193,11 @@ class SimpleMLPDecoder(nn.Module):
             cat_emb_dim
         )
         self.linear = nn.Linear(embedding_dim + cat_emb_dim, label_size)
-        self.logSoftMax = nn.LogSoftmax()
+        #self.linear1 = nn.Linear(embedding_dim + cat_emb_dim, self.label_sizes[0])
+        #self.linear2 = nn.Linear(embedding_dim + cat_emb_dim, self.label_sizes[1])
+        #self.linear3 = nn.Linear(embedding_dim + cat_emb_dim, self.label_sizes[2])
+        #self.linears = [self.linear1, self.linear2, self.linear3]
+        self.taxonomy = taxonomy
 
 
 
@@ -216,7 +228,7 @@ class SimpleMLPDecoder(nn.Module):
         src_emb = torch.mean(src_emb,1)
         return src_emb
 
-    def forward(self, doc_emb, inp_cat):
+    def forward(self, doc_emb, inp_cat,level=0):
         """
 
         :param doc_emb:
@@ -226,7 +238,8 @@ class SimpleMLPDecoder(nn.Module):
         cat_emb = self.category_embedding(inp_cat)
         x = torch.cat((doc_emb, cat_emb), 1)
         x = self.linear(x)
-        logits = self.logSoftMax(x)
+        #x = self.linears[level](x)
+        logits = self.temp_logsoftmax(x, self.temperature)
 
         return logits
 
@@ -241,6 +254,7 @@ class SimpleMLPDecoder(nn.Module):
         :return:
         """
         loss_fn = nn.NLLLoss(weight=loss_weights)
+        #loss_fns = [nn.NLLLoss(), nn.NLLLoss(), nn.NLLLoss()]
         loss = 0
         accs = []
         context_state = self.encode(src, src_lengths)
@@ -248,14 +262,18 @@ class SimpleMLPDecoder(nn.Module):
         cat_len = categories.size(1) - 1
         assert cat_len == 3
         out = None
+        #pdb.set_trace()
 
         use_tf = True if (random.random() < tf_ratio) else False
         if use_tf:
             for i in range(cat_len):
                 inp_cat = categories[:, i]
                 # hidden_state = torch.cat((hidden_state, context_state), 2)
-                out = self.forward(context_state, inp_cat)
-                target_cat = categories[:, i + 1]
+                out = self.forward(context_state, inp_cat, i)
+                out = self.mask_renormalize(inp_cat, out)
+                #print("outside mask")
+                #print(time.time())
+                target_cat = categories[:, i+1]
                 loss += loss_fn(out, target_cat) * loss_focus[i]
                 _, out_pred = torch.max(out.data, 1)
                 acc = (out_pred == target_cat.data).sum() / len(target_cat)
@@ -268,7 +286,8 @@ class SimpleMLPDecoder(nn.Module):
                     topv, topi = out.data.topk(1)
                     inp_cat = Variable(topi).squeeze(1)
                 # hidden_state = torch.cat((hidden_state, context_state), 2)
-                out = self.forward(context_state, inp_cat)
+                out = self.forward(context_state, inp_cat, i)
+                out = self.mask_renormalize(inp_cat, out)
                 target_cat = categories[:, i + 1]
                 loss += loss_fn(out, target_cat) * loss_focus[i]
                 _, out_pred = torch.max(out.data, 1)
@@ -276,6 +295,32 @@ class SimpleMLPDecoder(nn.Module):
                 accs.append(acc)
 
         return loss, accs
+
+    def mask_renormalize(self, parent_class_batch, logits):
+        """
+        Given a parent class, logits and taxonomy, mask the classes which are not in child
+        :param parent_class_batch: parent class ID in batch, batch x 1
+        :param logits: batch x classes
+        :return:
+        """
+        mask = torch.ones(logits.size())
+        #print('within mask')
+        #print(time.time())
+        parent_class_batch = parent_class_batch.data.cpu().numpy()
+        for batch_id, parent_class in enumerate(parent_class_batch):
+            if parent_class in self.taxonomy:
+                child_classes = self.taxonomy[parent_class]
+                for cc in child_classes:
+                    mask[batch_id][cc] = 0
+        #mask = Variable(mask).cuda()
+        mask = mask.byte().cuda()
+        logits.data.masked_fill_(mask, -float('inf'))
+        return logits
+
+    def label2category(self, label, level):
+        return self.label2id['l{}_{}'.format(label, level)]
+
+
 
 
 

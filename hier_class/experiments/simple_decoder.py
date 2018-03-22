@@ -62,6 +62,7 @@ def exp_config():
     temperature = 1
     loss_focus = [1,1,1]
     label_weights = [1,1,1]
+    dynamic_dictionary = True
 
 @ex.automain
 def train(_config, _run):
@@ -83,16 +84,19 @@ def train(_config, _run):
     gpu = _config['gpu']
     use_gpu = _config['use_gpu']
     model_params = copy.deepcopy(_config)
-    tot_levels = 0
+    cat_per_level = []
     for level in range(_config['levels']):
         nl = len(data.get_level_labels(level))
         logging.info('Classes in level {} = {}'.format(level, nl))
-        tot_levels += nl
+        cat_per_level.append(nl)
     model_params.update({
         'vocab_size': len(data.word2id),
         'label_size': data.decoder_num_labels,
         'pad_token': data.word2id[CONSTANTS.PAD_WORD],
-        'total_cats': tot_levels
+        'total_cats': sum(cat_per_level) + 1,
+        'taxonomy': data.taxonomy,
+        'label_sizes':cat_per_level,
+        'label2id': data.label2id
     })
 
     ## calculate label weights
@@ -143,6 +147,7 @@ def train(_config, _run):
                                                   collate_fn=data_utils.collate_fn,
                                                   num_workers=8)
         train_data_iter = iter(train_data_loader)
+
         test_data_loader = torch.utils.data.DataLoader(dataset=test_data,
                                                   batch_size=batch_size,
                                                   shuffle=True,
@@ -152,25 +157,34 @@ def train(_config, _run):
         logging.info("Got data")
         for src_data, src_lengths, src_labels in train_data_iter:
             labels = Variable(torch.LongTensor(src_labels))
+            #cat_labels = Variable(torch.LongTensor(cat_labels))
             src_data = Variable(src_data)
             if use_gpu:
                 src_data = src_data.cuda(gpu)
                 labels = labels.cuda(gpu)
+            #    cat_labels = cat_labels.cuda(gpu)
             optimizer.zero_grad()
-            loss, accs = model.batchNLLLoss(src_data, src_lengths, labels,tf_ratio=tf_ratio,
+            loss, accs = model.batchNLLLoss(src_data, src_lengths, labels,
+                                            tf_ratio=tf_ratio,
                                             loss_focus=_config['loss_focus'],
                                             loss_weights=label_weights)
             loss.backward()
+            m_params = [p for p in model.parameters() if p.requires_grad]
+            nn.utils.clip_grad_norm(m_params, 5)
             optimizer.step()
             stats.update_train(loss.data[0], accs)
+            break
         ## validate
         for src_data, src_lengths, src_labels in test_data_iter:
             labels =  Variable(torch.LongTensor(src_labels))
+            #cat_labels = Variable(torch.LongTensor(cat_labels))
             src_data = Variable(src_data)
             if use_gpu:
                 src_data = src_data.cuda(gpu)
+            #    cat_labels = cat_labels.cuda(gpu)
             labels = labels.cuda(gpu)
-            loss, accs = model.batchNLLLoss(src_data, src_lengths, labels, tf_ratio=0,
+            loss, accs = model.batchNLLLoss(src_data, src_lengths, labels,
+                                            tf_ratio=0,
                                             loss_focus=_config['loss_focus'],
                                             loss_weights=label_weights)
             stats.update_validation(loss.data[0],accs)
@@ -178,7 +192,7 @@ def train(_config, _run):
         ## anneal
         tf_ratio = tf_ratio * _config['tf_anneal']
         ## saving model
-        mu.save_model(model,epoch,0,_config['exp_name'],model_params)
+        mu.save_model(model,0,0,_config['exp_name'],model_params)
 
     stats.cleanup()
 
