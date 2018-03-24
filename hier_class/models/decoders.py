@@ -224,6 +224,7 @@ class SimpleMLPDecoder(nn.Module):
         :param src_lengths: length of the documents
         :return:
         """
+        # TODO: use Attention - fix max doc length
         src_emb = self.embedding(src)
         src_emb = torch.mean(src_emb,1)
         return src_emb
@@ -244,7 +245,7 @@ class SimpleMLPDecoder(nn.Module):
         return logits
 
     def batchNLLLoss(self, src, src_lengths, categories, tf_ratio=1.0, loss_focus=[],
-                     loss_weights=None):
+                     loss_weights=None, renormalize=False):
         """
         Calculate the negative log likelihood loss while predicting the categories
         :param src: documents to be classified
@@ -262,6 +263,7 @@ class SimpleMLPDecoder(nn.Module):
         cat_len = categories.size(1) - 1
         assert cat_len == 3
         out = None
+        out_p = None
         #pdb.set_trace()
 
         use_tf = True if (random.random() < tf_ratio) else False
@@ -270,11 +272,11 @@ class SimpleMLPDecoder(nn.Module):
                 inp_cat = categories[:, i]
                 # hidden_state = torch.cat((hidden_state, context_state), 2)
                 out = self.forward(context_state, inp_cat, i)
-                out = self.mask_renormalize(inp_cat, out)
-                #print("outside mask")
-                #print(time.time())
+                if renormalize:
+                    out = self.mask_renormalize(inp_cat, out)
                 target_cat = categories[:, i+1]
                 loss += loss_fn(out, target_cat) * loss_focus[i]
+                #out_p = self.mask_renormalize(inp_cat, out.data)
                 _, out_pred = torch.max(out.data, 1)
                 acc = (out_pred == target_cat.data).sum() / len(target_cat)
                 accs.append(acc)
@@ -285,11 +287,12 @@ class SimpleMLPDecoder(nn.Module):
                 else:
                     topv, topi = out.data.topk(1)
                     inp_cat = Variable(topi).squeeze(1)
-                # hidden_state = torch.cat((hidden_state, context_state), 2)
                 out = self.forward(context_state, inp_cat, i)
-                out = self.mask_renormalize(inp_cat, out)
+                if renormalize:
+                    out = self.mask_renormalize(inp_cat, out)
                 target_cat = categories[:, i + 1]
                 loss += loss_fn(out, target_cat) * loss_focus[i]
+                #out_p = self.mask_renormalize(inp_cat, out.data)
                 _, out_pred = torch.max(out.data, 1)
                 acc = (out_pred == target_cat.data).sum() / len(target_cat)
                 accs.append(acc)
@@ -304,17 +307,14 @@ class SimpleMLPDecoder(nn.Module):
         :return:
         """
         mask = torch.ones(logits.size())
-        #print('within mask')
-        #print(time.time())
         parent_class_batch = parent_class_batch.data.cpu().numpy()
         for batch_id, parent_class in enumerate(parent_class_batch):
             if parent_class in self.taxonomy:
                 child_classes = self.taxonomy[parent_class]
                 for cc in child_classes:
                     mask[batch_id][cc] = 0
-        #mask = Variable(mask).cuda()
         mask = mask.byte().cuda()
-        logits.data.masked_fill_(mask, -float('inf'))
+        logits.masked_fill_(mask, -float('inf'))
         return logits
 
     def label2category(self, label, level):

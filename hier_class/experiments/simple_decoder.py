@@ -169,11 +169,11 @@ def train(_config, _run):
                                             loss_focus=_config['loss_focus'],
                                             loss_weights=label_weights)
             loss.backward()
-            m_params = [p for p in model.parameters() if p.requires_grad]
-            nn.utils.clip_grad_norm(m_params, 5)
+            #m_params = [p for p in model.parameters() if p.requires_grad]
+            #nn.utils.clip_grad_norm(m_params, 5)
             optimizer.step()
             stats.update_train(loss.data[0], accs)
-            break
+            #break
         ## validate
         for src_data, src_lengths, src_labels in test_data_iter:
             labels =  Variable(torch.LongTensor(src_labels))
