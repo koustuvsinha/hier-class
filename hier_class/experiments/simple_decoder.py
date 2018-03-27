@@ -48,7 +48,7 @@ def exp_config():
     train_test_split = 0.8
     data_type = 'WIKI'
     data_loc = '/home/ml/ksinha4/datasets/data_WIKI'
-    file_name = 'small_sent.csv'
+    file_name = 'full_docs_2.csv'
     #data_loc = '/home/ml/ksinha4/datasets/data_WOS/WebOfScience/WOS46985'
     tokenization = 'word'
     batch_size = 16
@@ -63,6 +63,8 @@ def exp_config():
     loss_focus = [1,1,1]
     label_weights = [1,1,1]
     dynamic_dictionary = True
+    max_vocab = 100000
+    max_word_doc = -1
 
 @ex.automain
 def train(_config, _run):
@@ -73,7 +75,9 @@ def train(_config, _run):
     data = data_utils.Data_Utility(
         exp_name=_config['exp_name'],
         train_test_split=_config['train_test_split'],
-        decoder_ready=True
+        decoder_ready=True,
+        max_vocab=_config['max_vocab'],
+        max_word_doc=_config['max_word_doc']
     )
     logging.info("Loading data")
     data.load(_config['data_type'],_config['data_loc'],_config['file_name'],_config['tokenization'])
@@ -155,6 +159,7 @@ def train(_config, _run):
                                                   num_workers=8)
         test_data_iter = iter(test_data_loader)
         logging.info("Got data")
+        model.train()
         for src_data, src_lengths, src_labels in train_data_iter:
             labels = Variable(torch.LongTensor(src_labels))
             #cat_labels = Variable(torch.LongTensor(cat_labels))
@@ -175,10 +180,11 @@ def train(_config, _run):
             stats.update_train(loss.data[0], accs)
             #break
         ## validate
+        model.eval()
         for src_data, src_lengths, src_labels in test_data_iter:
-            labels =  Variable(torch.LongTensor(src_labels))
+            labels =  Variable(torch.LongTensor(src_labels), volatile=True)
             #cat_labels = Variable(torch.LongTensor(cat_labels))
-            src_data = Variable(src_data)
+            src_data = Variable(src_data, volatile=True)
             if use_gpu:
                 src_data = src_data.cuda(gpu)
             #    cat_labels = cat_labels.cuda(gpu)
