@@ -47,7 +47,7 @@ def exp_config():
     train_test_split = 0.8
     data_type = 'WIKI'
     data_loc = '/home/ml/ksinha4/datasets/data_WIKI'
-    file_name = '1000_doc_sent.csv'
+    file_name = 'full_docs_sent.csv'
     #data_loc = '/home/ml/ksinha4/datasets/data_WOS/WebOfScience/WOS46985'
     tokenization = 'word'
     batch_size = 16
