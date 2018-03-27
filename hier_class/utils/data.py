@@ -331,12 +331,12 @@ class Data_Utility(data.Dataset):
         #labels = self.labels[rows[index]]
 
         if type(data[0]) != list:
-            data = [self.word2id[word] for word in data]
+            data = [[self.word2id[word] for word in data]]
         else:
             num_sent = len(data)
             sents_len = [len(sent) for sent in data]
             max_sent_len = max(sents_len)
-            matrix = np.zeros((num_sent,max_sent_len))
+            matrix = np.zeros((num_sent, max_sent_len))
 
             for i, sent in enumerate(data):
                 matrix[i][:sents_len[i]] = [self.word2id[word] for word in sent]
@@ -346,6 +346,7 @@ class Data_Utility(data.Dataset):
         if self.decoder_ready:
             labels = self.decoder_labels[rows[index]]
         data = torch.LongTensor(data)
+        assert len(data.size()) == 2
         return data, labels
 
     def __len__(self):
@@ -362,8 +363,18 @@ def collate_fn(data):
     :return:
     """
     if len(data[0][0].size()) == 2: # matrix
-        rows = [matrix[0].size()[0] for matrix in data]
-        cols = [matrix[0].size()[1] for matrix in data] # there might be sents only have one sent
+        # try:
+        if True:
+            for matrix in data:
+                try:
+                    assert len(matrix[0].size()) == 2
+                except:
+                    print(matrix[0])
+            rows = [matrix[0].size()[0] for matrix in data]
+            cols = [matrix[0].size()[1] for matrix in data] # there might be sents only have one sent
+        # except:
+        #     for matrix in data:
+        #         print("error", matrix[0].size())
         max_row = max(rows)
         max_col = max(cols)
 
@@ -384,7 +395,7 @@ def collate_fn(data):
             padded_rows = torch.zeros(len(rows), max(lengths)).long()
             for i, row in enumerate(rows):
                 end = lengths[i]
-                padded_rows[i,:end] = row[:end]
+                padded_rows[i:end] = row[:end]
             return padded_rows, lengths
 
         data.sort(key=lambda x: len(x[0]), reverse=True)
