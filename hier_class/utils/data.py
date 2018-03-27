@@ -105,10 +105,15 @@ class Data_Utility(data.Dataset):
                     # data has been sentence tokenized
                     text = text.split('<sent>')
                     text = [self.tokenize(str(t), mode=tokenization) for t in text]
+                    def flat_list(list_of_list):
+                        return [i for l in list_of_list for i in l]
+
+                    items.update(flat_list(text))
                 else:
                     text = self.tokenize(str(text), mode=tokenization)
+                    items.update(text)
                 text_data.append(text)
-                items.update(text)
+
 
             data_m['y_class2id'] = y_class2id
             dict_m['word2id'], dict_m['id2word'] = self.assign_wordids(items, self.special_tokens)
@@ -192,7 +197,7 @@ class Data_Utility(data.Dataset):
 
     def load(self, data_type='', data_loc='', file_name='', tokenization='word'):
         ## Load previously preprocessed data, and add to the object
-        save_loc = self.save_path_base + '/{}_processed_{}.json'.format(data_type, tokenization)
+        save_loc = self.save_path_base + '/{}_processed_{}_{}.json'.format(data_type, file_name, tokenization)
         if not os.path.exists(save_loc):
             logging.info("Preprocessing...")
             processed_dict = self.preprocess(data_type, data_loc, file_name, tokenization)
@@ -209,6 +214,8 @@ class Data_Utility(data.Dataset):
             # fix the labels. during data collection, the labels where taken as unique id per level.
             # to make all levels unique here for the decoder to work, we need to make them sequential
             label2id = {}
+            # save a hierarchy of decoder levels
+            taxonomy = {}
             # get the max number of labels per level
             max_levels = max([len(label) for label in self.labels])
             ct  = 1
@@ -225,6 +232,19 @@ class Data_Utility(data.Dataset):
                     row_labels.append(label2id['l{}_{}'.format(i,label)])
                 self.decoder_labels.append(row_labels)
             self.decoder_num_labels = ct
+            # build the taxonomy
+            taxonomy[0] = set()
+            for labels in self.labels:
+                new_dec_labels = [label2id['l{}_{}'.format(level,label)] for level,label in enumerate(labels)]
+                parent = 0
+                for dec_label in new_dec_labels:
+                    if parent not in taxonomy:
+                        taxonomy[parent] = set()
+                    taxonomy[parent].add(dec_label)
+                    parent = dec_label
+            self.taxonomy = taxonomy
+            self.label2id = label2id
+            self.id2label = {v:k for k,v in label2id.items()}
 
         self.split_indices()
 
@@ -308,6 +328,20 @@ class Data_Utility(data.Dataset):
             rows = self.test_indices
         data = self.data[rows[index]]
         data = [self.word2id[word] for word in data]
+        #labels = self.labels[rows[index]]
+
+        if type(data[0]) != list:
+            data = [self.word2id[word] for word in data]
+        else:
+            num_sent = len(data)
+            sents_len = [len(sent) for sent in data]
+            max_sent_len = max(sents_len)
+            matrix = np.zeros((num_sent,max_sent_len))
+
+            for i, sent in enumerate(data):
+                matrix[i][:sents_len[i]] = [self.word2id[word] for word in sent]
+            # data = [self.word2id[word] for sent in data for word in sent]
+            data = matrix
         labels = self.labels[rows[index]]
         if self.decoder_ready:
             labels = self.decoder_labels[rows[index]]
@@ -327,17 +361,35 @@ def collate_fn(data):
     :param data: list of tuples (data, labels)
     :return:
     """
-    def merge(rows):
-        lengths = [len(row) for row in rows]
-        padded_rows = torch.zeros(len(rows), max(lengths)).long()
-        for i, row in enumerate(rows):
-            end = lengths[i]
-            padded_rows[i,:end] = row[:end]
-        return padded_rows, lengths
+    if len(data[0][0].size()) == 2: # matrix
+        rows = [matrix[0].size()[0] for matrix in data]
+        cols = [matrix[0].size()[1] for matrix in data] # there might be sents only have one sent
+        max_row = max(rows)
+        max_col = max(cols)
 
-    data.sort(key=lambda x: len(x[0]), reverse=True)
-    src_data, src_labels = zip(*data)
-    src_data, src_lengths = merge(src_data)
+        def merge(matrices):
+            lengths = [(rows[i],cols[i]) for i in range(len(rows))]
+            padded_tensor = torch.zeros(len(data), max_row, max_col).long()
+            for i, row in enumerate(data):
+                padded_tensor[i,:rows[i],:cols[i]] = data[i][0]
+            return padded_tensor, lengths
+
+        # pad the last two dimensions
+        src_data, src_labels = zip(*data)
+        src_data, src_lengths = merge(src_data)
+
+    else: # not list of sentences
+        def merge(rows):
+            lengths = [len(row) for row in rows]
+            padded_rows = torch.zeros(len(rows), max(lengths)).long()
+            for i, row in enumerate(rows):
+                end = lengths[i]
+                padded_rows[i,:end] = row[:end]
+            return padded_rows, lengths
+
+        data.sort(key=lambda x: len(x[0]), reverse=True)
+        src_data, src_labels = zip(*data)
+        src_data, src_lengths = merge(src_data)
 
     return src_data, src_lengths, src_labels
 

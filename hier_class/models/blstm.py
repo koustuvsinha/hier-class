@@ -57,13 +57,18 @@ class BLSTM(nn.Module):
         self.word_LSTM = nn.LSTM(
             input_size=embedding_dim,
             hidden_size=hidden_size,
-            bidirectional=True
+            bidirectional=True,
+            batch_first=True
         )
         self.sent_LSTM = nn.LSTM(
-            input_size=embedding_dim,
+            input_size=hidden_size*2,
             hidden_size=hidden_size,
-            bidirectional=True
+            bidirectional=True,
+            batch_first=True
         )
+
+        self.tanh = nn.Tanh()
+        self.fc1 = nn.Linear(hidden_size*2, hidden_size)
 
         self.decoder = nn.GRU(category_emb_dim, embedding_dim, batch_first=True)
         self.decoder2linear = nn.Linear(embedding_dim, label_size)
@@ -84,9 +89,33 @@ class BLSTM(nn.Module):
         :param src_lengths: length of the documents
         :return:
         """
-        src_emb = self.embedding(src) #need to check if sentence info is preserved
-        src_emb = torch.mean(src_emb,1)
-        return src_emb
+        def _avg_pooling(self, x): # you need to force all pads to be zero and ignore them when averaging
+            result = []
+            for i, data in enumerate(x):
+                #data = torch.nonzero(data)
+               # avg_pooling = torch.mean(torch.nonzero(data).float(), dim=1, keepdim=True)
+                avg_pooling = torch.mean(data, dim=1, keepdim=True) #might need to consider zero terms
+                result.append(avg_pooling)
+            return torch.cat(result, dim=1)
+
+        # unbine based on the sentences
+        word_embs_in_sent = [self.embedding(src_sent) for src_sent in torch.unbind(src,1)]
+        # a list of sentences, each sentence is 3d tensor with word-hidden states
+        words_hiddens_in_sent = [self.word_LSTM(src_emb)[0] for src_emb in word_embs_in_sent]
+        #each 3d tensor is avg_pooled with the words aggregate to a sent embedding
+        sent_embs_in_doc = _avg_pooling(self, words_hiddens_in_sent)
+        #transform from sent embeddings to sentence representations
+        sent_hiddens_in_doc = self.sent_LSTM(sent_embs_in_doc)[0] #(b,seq,dim_hidden)
+        #break all the sentence hidden state
+        sent_hiddens_list = torch.unbind(sent_hiddens_in_doc, 1) #[(b,1,dim_hidden), ...,(b,1,dim_hidden) ]
+        # choice one: last sentence hidden states as the rep for the document
+        doc_rep = sent_hiddens_list[-1]
+        # #choice two: average all sent hidden states
+        # doc_rep = torch.mean(sent_hiddens_in_doc,dim=1)
+        # #choice three: non-linear transformation of the doc_rep
+        # doc_rep = torch.mean(sent_hiddens_in_doc, dim=1)
+        # doc_rep = self.tanh(self.fc1(doc_rep))
+        return doc_rep
 
     def forward(self, categories, hidden_state):
         """
