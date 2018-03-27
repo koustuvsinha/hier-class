@@ -109,12 +109,12 @@ class Data_Utility(data.Dataset):
                     text = [self.tokenize(str(t), mode=tokenization) for t in text]
                 else:
                     text = self.tokenize(str(text), mode=tokenization)
+                ## prune docs by max words
                 if self.max_word_doc > 0 and len(text) > self.max_word_doc:
-                        continue
-                else:
-                    text_data.append(text)
-                    items.update(text)
-                    y_classes.append([l_1, l_2, l_3])
+                    text = text[:self.max_word_doc]
+                text_data.append(text)
+                items.update(text)
+                y_classes.append([l_1, l_2, l_3])
 
             data_m['y_class2id'] = y_class2id
             dict_m['word2id'], dict_m['id2word'] = self.assign_wordids(items, self.special_tokens)
