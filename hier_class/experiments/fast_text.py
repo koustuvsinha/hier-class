@@ -46,12 +46,13 @@ def exp_config():
     save_interval = 1000
     train_test_split = 0.8
     data_type = 'WIKI'
-    data_loc = '/home/ml/ksinha4/mlp/hier-class/data/'
+    data_loc = '/home/ml/ksinha4/datasets/data_WIKI'
+    file_name = 'full_docs_2.csv'
     #data_loc = '/home/ml/ksinha4/datasets/data_WOS/WebOfScience/WOS46985'
     tokenization = 'word'
     batch_size = 16
     epochs = 40
-    level = 2
+    level = 0
 
 @ex.automain
 def train(_config, _run):
@@ -64,7 +65,7 @@ def train(_config, _run):
         train_test_split=_config['train_test_split']
     )
     logging.info("Loading data")
-    data.load(_config['data_type'],_config['data_loc'],_config['tokenization'])
+    data.load(_config['data_type'],_config['data_loc'], _config['file_name'],_config['tokenization'])
     batch_size = _config['batch_size']
     gpu = _config['gpu']
     use_gpu = _config['use_gpu']
@@ -116,7 +117,7 @@ def train(_config, _run):
                                                   collate_fn=data_utils.collate_fn)
         test_data_iter = iter(test_data_loader)
         for src_data, src_lengths, src_labels in train_data_iter:
-            end_labels = Variable(torch.LongTensor([labels[-1] for labels in src_labels]))
+            end_labels = Variable(torch.LongTensor([labels[_config['level']] for labels in src_labels]))
             src_data = Variable(src_data)
             if use_gpu:
                 src_data = src_data.cuda(gpu)
@@ -132,7 +133,7 @@ def train(_config, _run):
             train_acc.append(acc)
         ## validate
         for src_data, src_lengths, src_labels in test_data_iter:
-            end_labels =  Variable(torch.LongTensor([labels[-1] for labels in src_labels]))
+            end_labels =  Variable(torch.LongTensor([labels[_config['level']] for labels in src_labels]))
             src_data = Variable(src_data)
             if use_gpu:
                 src_data = src_data.cuda(gpu)
