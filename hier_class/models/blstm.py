@@ -70,8 +70,8 @@ class BLSTM(nn.Module):
         self.tanh = nn.Tanh()
         self.fc1 = nn.Linear(hidden_size*2, hidden_size)
 
-        self.decoder = nn.GRU(category_emb_dim, embedding_dim, batch_first=True)
-        self.decoder2linear = nn.Linear(embedding_dim, label_size)
+        self.decoder = nn.GRU(category_emb_dim, hidden_size*2, batch_first=True)
+        self.decoder2linear = nn.Linear(hidden_size*2, label_size)
         self.logSoftMax = nn.LogSoftmax()
 
     def init_weights(self):
