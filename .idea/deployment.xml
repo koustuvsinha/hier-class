@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="PublishConfigData" showDifferentInSync="false" showNewOnSourceInSync="false">
+    <serverData>
+      <paths name="ydong26@garden-path.cs.mcgill.ca">
+        <serverdata>
+          <mappings>
+            <mapping deploy="/home/ml/ydong26/Dropbox/hier-class" local="$PROJECT_DIR$" web="/home/ml/ydong26/Dropbox/hier-class" />
+          </mappings>
+        </serverdata>
+      </paths>
+    </serverData>
+  </component>
+</project>
