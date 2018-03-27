@@ -3,7 +3,9 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.autograd import Variable
+from torch.nn.utils.rnn import pack_padded_sequence, pad_packed_sequence
 import random
+from hier_class.models.sublayers import DocumentLevelAttention
 import numpy as np
 import time
 import pdb
@@ -162,7 +164,8 @@ class SimpleMLPDecoder(nn.Module):
     def __init__(self, vocab_size=1, embedding_dim=300, cat_emb_dim=64, label_size=1,
                  label_sizes=[], label2id={},
                  total_cats=1,pad_token=1,
-                 taxonomy=None,temperature=0.8,
+                 taxonomy=None,temperature=0.8, max_words=600,
+                 d_k=64, d_v=64, n_head=1,
                  **kwargs):
         """
 
@@ -183,21 +186,30 @@ class SimpleMLPDecoder(nn.Module):
         self.embedding_dim = embedding_dim
         self.temperature = temperature
         self.label2id = label2id
+        self.total_cats = total_cats
         self.embedding = nn.Embedding(
             vocab_size,
             embedding_dim,
             pad_token
         )
+        # for attention to work, embedding_dim and category embedding dim should be the same
+        if (embedding_dim * 2) != cat_emb_dim:
+            print(embedding_dim)
+            print(cat_emb_dim)
+            raise RuntimeError("for attention to work, embedding_dim and category embedding dim should be the same or double for bidirectional")
         self.category_embedding = nn.Embedding(
             total_cats,
             cat_emb_dim
         )
-        self.linear = nn.Linear(embedding_dim + cat_emb_dim, label_size)
+        self.encoder = nn.LSTM(embedding_dim, embedding_dim, bidirectional=True, batch_first=True)
+        self.linear = nn.Linear(embedding_dim * 2, label_size)
         #self.linear1 = nn.Linear(embedding_dim + cat_emb_dim, self.label_sizes[0])
         #self.linear2 = nn.Linear(embedding_dim + cat_emb_dim, self.label_sizes[1])
         #self.linear3 = nn.Linear(embedding_dim + cat_emb_dim, self.label_sizes[2])
         #self.linears = [self.linear1, self.linear2, self.linear3]
         self.taxonomy = taxonomy
+        self.max_words = max_words
+        self.attention = DocumentLevelAttention(embedding_dim,d_k,d_v)
 
 
 
@@ -226,10 +238,17 @@ class SimpleMLPDecoder(nn.Module):
         """
         # TODO: use Attention - fix max doc length
         src_emb = self.embedding(src)
-        src_emb = torch.mean(src_emb,1)
-        return src_emb
+        #output = torch.mean(src_emb,1)
+        src_pack = pack_padded_sequence(src_emb, src_lengths, batch_first=True)
+        packed_output, (h_t, c_t) = self.encoder(src_pack)
+        output, _ = pad_packed_sequence(packed_output, batch_first=True) # batch x seq x hid
 
-    def forward(self, doc_emb, inp_cat,level=0):
+        return output
+
+    def attend(self, logits):
+        pass
+
+    def forward(self, encoder_outputs, inp_cat,level=0):
         """
 
         :param doc_emb:
@@ -237,8 +256,11 @@ class SimpleMLPDecoder(nn.Module):
         :return:
         """
         cat_emb = self.category_embedding(inp_cat)
-        x = torch.cat((doc_emb, cat_emb), 1)
-        x = self.linear(x)
+        cat_emb = cat_emb.unsqueeze(1)
+        doc_emb, attn = self.attention(cat_emb, encoder_outputs, encoder_outputs)
+        #x = torch.cat((doc_emb, cat_emb), 1)
+        doc_emb = doc_emb.squeeze(1)
+        x = self.linear(doc_emb)
         #x = self.linears[level](x)
         logits = self.temp_logsoftmax(x, self.temperature)
 
@@ -258,8 +280,7 @@ class SimpleMLPDecoder(nn.Module):
         #loss_fns = [nn.NLLLoss(), nn.NLLLoss(), nn.NLLLoss()]
         loss = 0
         accs = []
-        context_state = self.encode(src, src_lengths)
-        hidden_state = self.init_hidden(context_state.size(0))
+        encoder_outputs = self.encode(src, src_lengths)
         cat_len = categories.size(1) - 1
         assert cat_len == 3
         out = None
@@ -270,8 +291,11 @@ class SimpleMLPDecoder(nn.Module):
         if use_tf:
             for i in range(cat_len):
                 inp_cat = categories[:, i]
+                if torch.max(inp_cat).data.cpu().numpy() > self.total_cats:
+                    print(inp_cat)
+                    raise RuntimeError("category ID outside of embedding")
                 # hidden_state = torch.cat((hidden_state, context_state), 2)
-                out = self.forward(context_state, inp_cat, i)
+                out = self.forward(encoder_outputs, inp_cat, i)
                 if renormalize:
                     out = self.mask_renormalize(inp_cat, out)
                 target_cat = categories[:, i+1]
@@ -282,12 +306,18 @@ class SimpleMLPDecoder(nn.Module):
                 accs.append(acc)
         else:
             for i in range(cat_len):
+                #pdb.set_trace()
                 if i == 0:
                     inp_cat = categories[:, i]  # starting token
                 else:
                     topv, topi = out.data.topk(1)
                     inp_cat = Variable(topi).squeeze(1)
-                out = self.forward(context_state, inp_cat, i)
+                if torch.max(inp_cat).data.cpu().numpy() > self.total_cats:
+                    print(inp_cat)
+                    print(topi)
+                    print(out.size())
+                    raise RuntimeError("category ID outside of embedding")
+                out = self.forward(encoder_outputs, inp_cat, i)
                 if renormalize:
                     out = self.mask_renormalize(inp_cat, out)
                 target_cat = categories[:, i + 1]
