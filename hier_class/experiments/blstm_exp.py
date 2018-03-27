@@ -21,7 +21,7 @@ import copy
 import json
 from tqdm import tqdm
 from hier_class.utils import data as data_utils
-from hier_class.models import decoders
+from hier_class.models import blstm
 from hier_class.utils import constants as CONSTANTS
 
 ex = Experiment()
@@ -47,6 +47,7 @@ def exp_config():
     train_test_split = 0.8
     data_type = 'WIKI'
     data_loc = '/home/ml/ksinha4/datasets/data_WIKI'
+    file_name = '1000_doc_sent.csv'
     #data_loc = '/home/ml/ksinha4/datasets/data_WOS/WebOfScience/WOS46985'
     tokenization = 'word'
     batch_size = 16
@@ -66,7 +67,7 @@ def train(_config, _run):
         decoder_ready=True
     )
     logging.info("Loading data")
-    data.load(_config['data_type'],_config['data_loc'],_config['tokenization'])
+    data.load(_config['data_type'],_config['data_loc'],_config['file_name'])
     batch_size = _config['batch_size']
     gpu = _config['gpu']
     use_gpu = _config['use_gpu']
@@ -78,7 +79,7 @@ def train(_config, _run):
         'pad_token': data.word2id[CONSTANTS.PAD_WORD]
     })
 
-    model = decoders.SimpleDecoder(**model_params)
+    model = blstm.BLSTM(**model_params)
     print(model)
     m_params = [p for p in model.parameters() if p.requires_grad]
     optimizer = _config['optimizer']

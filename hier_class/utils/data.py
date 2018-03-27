@@ -327,7 +327,7 @@ class Data_Utility(data.Dataset):
         else:
             rows = self.test_indices
         data = self.data[rows[index]]
-        data = [self.word2id[word] for word in data]
+        # data = [self.word2id[word] for word in data]
         #labels = self.labels[rows[index]]
 
         if type(data[0]) != list:

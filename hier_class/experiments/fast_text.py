@@ -48,6 +48,7 @@ def exp_config():
     data_type = 'WIKI'
     data_loc = '/home/ml/ksinha4/mlp/hier-class/data/'
     #data_loc = '/home/ml/ksinha4/datasets/data_WOS/WebOfScience/WOS46985'
+    file_name = "full_docs_2.csv"
     tokenization = 'word'
     batch_size = 16
     epochs = 40
@@ -64,7 +65,7 @@ def train(_config, _run):
         train_test_split=_config['train_test_split']
     )
     logging.info("Loading data")
-    data.load(_config['data_type'],_config['data_loc'],_config['tokenization'])
+    data.load(_config['data_type'],_config['data_loc'],_config['file_name'])
     batch_size = _config['batch_size']
     gpu = _config['gpu']
     use_gpu = _config['use_gpu']
