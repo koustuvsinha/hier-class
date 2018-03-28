@@ -165,7 +165,7 @@ class SimpleMLPDecoder(nn.Module):
                  label_sizes=[], label2id={},
                  total_cats=1,pad_token=1,
                  taxonomy=None,temperature=0.8, max_words=600,
-                 d_k=64, d_v=64, n_head=1,
+                 d_k=64, d_v=64, n_head=1, dropout=0.1,
                  **kwargs):
         """
 
@@ -202,14 +202,19 @@ class SimpleMLPDecoder(nn.Module):
             cat_emb_dim
         )
         self.encoder = nn.LSTM(embedding_dim, embedding_dim, bidirectional=True, batch_first=True)
-        self.linear = nn.Linear(embedding_dim * 2, label_size)
+        self.linear = nn.Linear(embedding_dim * 2, embedding_dim)
+        self.linear2 = nn.Linear(embedding_dim, label_size)
+        self.relu = nn.ReLU()
         #self.linear1 = nn.Linear(embedding_dim + cat_emb_dim, self.label_sizes[0])
         #self.linear2 = nn.Linear(embedding_dim + cat_emb_dim, self.label_sizes[1])
         #self.linear3 = nn.Linear(embedding_dim + cat_emb_dim, self.label_sizes[2])
         #self.linears = [self.linear1, self.linear2, self.linear3]
         self.taxonomy = taxonomy
         self.max_words = max_words
-        self.attention = DocumentLevelAttention(embedding_dim,d_k,d_v)
+        self.attention_1 = DocumentLevelAttention(embedding_dim,d_k,d_v,dropout=dropout)
+        self.attention_2 = DocumentLevelAttention(embedding_dim, d_k, d_v, n_head=2, dropout=dropout)
+        self.attention_3 = DocumentLevelAttention(embedding_dim, d_k, d_v, n_head=8, dropout=dropout)
+        self.attentions = [self.attention_1, self.attention_2, self.attention_3]
 
 
 
@@ -257,10 +262,12 @@ class SimpleMLPDecoder(nn.Module):
         """
         cat_emb = self.category_embedding(inp_cat)
         cat_emb = cat_emb.unsqueeze(1)
-        doc_emb, attn = self.attention(cat_emb, encoder_outputs, encoder_outputs)
+        doc_emb, attn = self.attentions[level](cat_emb, encoder_outputs, encoder_outputs)
         #x = torch.cat((doc_emb, cat_emb), 1)
         doc_emb = doc_emb.squeeze(1)
         x = self.linear(doc_emb)
+        x = self.relu(x)
+        x = self.linear2(x)
         #x = self.linears[level](x)
         logits = self.temp_logsoftmax(x, self.temperature)
 
@@ -274,6 +281,9 @@ class SimpleMLPDecoder(nn.Module):
         :param src_lengths: length of the docs
         :param categories: hierarchical categories
         :param tf_ratio: teacher forcing ratio
+
+        TODO: change the evaluation criteria - only calculate accuracy of next level
+        TODO: for the correct classifications of first level
         :return:
         """
         loss_fn = nn.NLLLoss(weight=loss_weights)
@@ -300,11 +310,13 @@ class SimpleMLPDecoder(nn.Module):
                     out = self.mask_renormalize(inp_cat, out)
                 target_cat = categories[:, i+1]
                 loss += loss_fn(out, target_cat) * loss_focus[i]
-                #out_p = self.mask_renormalize(inp_cat, out.data)
+                #out = self.mask_renormalize(inp_cat, out)
                 _, out_pred = torch.max(out.data, 1)
                 acc = (out_pred == target_cat.data).sum() / len(target_cat)
                 accs.append(acc)
         else:
+            batch_mask = torch.ones(encoder_outputs.size(0)).long()
+            batch_mask = batch_mask.cuda()
             for i in range(cat_len):
                 #pdb.set_trace()
                 if i == 0:
@@ -317,14 +329,24 @@ class SimpleMLPDecoder(nn.Module):
                     print(topi)
                     print(out.size())
                     raise RuntimeError("category ID outside of embedding")
+                #inp_cat = categories[:, i]
                 out = self.forward(encoder_outputs, inp_cat, i)
                 if renormalize:
                     out = self.mask_renormalize(inp_cat, out)
                 target_cat = categories[:, i + 1]
+                # mask by batch
+                #pdb.set_trace()
+                target_cat = target_cat * Variable(batch_mask)
+                out = (out.transpose(0,1) * Variable(batch_mask.float())).transpose(0,1)
                 loss += loss_fn(out, target_cat) * loss_focus[i]
-                #out_p = self.mask_renormalize(inp_cat, out.data)
+                #out = self.mask_renormalize(inp_cat, out)
                 _, out_pred = torch.max(out.data, 1)
                 acc = (out_pred == target_cat.data).sum() / len(target_cat)
+                level_correct = (out_pred == target_cat.data).long()
+                batch_mask = batch_mask * level_correct
+                # for next level, mask batch for the correct outputs
+                # and mask it again with the current batch mask
+
                 accs.append(acc)
 
         return loss, accs
