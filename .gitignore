@@ -105,3 +105,11 @@ ENV/
 
 # data jsons
 *.json
+
+# IDEA
+.idea/
+
+# project specific
+logs/
+saved/
+*.csv
