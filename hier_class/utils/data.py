@@ -322,27 +322,24 @@ class Data_Utility(data.Dataset):
         return embeddings
 
 
-    def save(self):
-        ## save preprocessed entities
-        pass
-
     def __getitem__(self, index):
         ## return single training row for torch.DataLoader
         if self.data_mode == 'train':
             rows = self.train_indices
         else:
             rows = self.test_indices
-        data = self.data[rows[index]]
+        row_index = rows[index]
+        data = self.data[row_index]
         data = [self.word2id[word] if word in self.word2id else self.word2id[constants.UNK_WORD]
                 for word in data]
-        labels = self.labels[rows[index]]
+        labels = self.labels[row_index]
         if self.decoder_ready:
-            labels = self.decoder_labels[rows[index]]
+            labels = self.decoder_labels[row_index]
         elif self.level != -1:
-            labels = self.labels[rows[index]]
+            labels = self.labels[row_index]
             labels = [0, labels[self.level]]
         data = torch.LongTensor(data)
-        return data, labels
+        return data, labels, [row_index]
 
     def __len__(self):
         if self.data_mode == 'train':
@@ -366,8 +363,8 @@ def collate_fn(data):
         return padded_rows, lengths
 
     data.sort(key=lambda x: len(x[0]), reverse=True)
-    src_data, src_labels = zip(*data)
+    src_data, src_labels, src_row_indexes = zip(*data)
     src_data, src_lengths = merge(src_data)
 
-    return src_data, src_lengths, src_labels
+    return src_data, src_lengths, src_labels, src_row_indexes
 

@@ -46,7 +46,7 @@ def exp_config():
     lr = 1e-3
     log_interval = 200
     save_interval = 1000
-    train_test_split = 0.8
+    train_test_split = 0.7
     data_type = 'WIKI'
     data_loc = '/home/ml/ksinha4/datasets/data_WIKI'
     data_path = 'wiki_pruned'
@@ -69,6 +69,7 @@ def exp_config():
     max_vocab = 100000
     max_word_doc = -1
     decoder_ready = True
+    prev_emb = True
 
 @ex.automain
 def train(_config, _run):
@@ -159,7 +160,7 @@ def train(_config, _run):
     max_levels = _config['levels']
     if _config['level'] != -1:
         max_levels = 1
-    stats = Statistics(batch_size,max_levels,_config['exp_name'])
+    stats = Statistics(batch_size,max_levels,_config['exp_name'],data=data)
     logging.info("With focus : {}".format(_config['loss_focus']))
     all_step = 0
     for epoch in range(epochs):
@@ -183,7 +184,7 @@ def train(_config, _run):
         test_data_iter = iter(test_data_loader)
         logging.info("Got data")
         model.train()
-        for src_data, src_lengths, src_labels in train_data_iter:
+        for src_data, src_lengths, src_labels, src_index in train_data_iter:
             labels = Variable(torch.LongTensor(src_labels))
             #cat_labels = Variable(torch.LongTensor(cat_labels))
             src_data = Variable(src_data)
@@ -192,7 +193,7 @@ def train(_config, _run):
                 labels = labels.cuda(gpu)
             #    cat_labels = cat_labels.cuda(gpu)
             optimizer.zero_grad()
-            loss, accs, _ = model.batchNLLLoss(src_data, src_lengths, labels,
+            loss, accs, _, _ = model.batchNLLLoss(src_data, src_lengths, labels,
                                             tf_ratio=tf_ratio,
                                             loss_focus=_config['loss_focus'],
                                             loss_weights=label_weights,
@@ -208,7 +209,7 @@ def train(_config, _run):
         ## store the attention weights and words in a separate file for
         ## later visualization
         storage = []
-        for src_data, src_lengths, src_labels in test_data_iter:
+        for src_data, src_lengths, src_labels, src_index in test_data_iter:
             labels =  Variable(torch.LongTensor(src_labels), volatile=True)
             #cat_labels = Variable(torch.LongTensor(cat_labels))
             src_data = Variable(src_data, volatile=True)
@@ -216,14 +217,14 @@ def train(_config, _run):
                 src_data = src_data.cuda(gpu)
             #    cat_labels = cat_labels.cuda(gpu)
             labels = labels.cuda(gpu)
-            loss, accs, attns = model.batchNLLLoss(src_data, src_lengths, labels,
+            loss, accs, attns, preds = model.batchNLLLoss(src_data, src_lengths, labels,
                                             tf_ratio=_config['validation_tf'],
                                             loss_focus=_config['loss_focus'],
                                             loss_weights=label_weights,
                                             max_categories=max_categories)
 
             #src_d = src_data.data
-            stats.update_validation(loss.data[0],accs)
+            stats.update_validation(loss.data[0],accs, attn=attns, src=src_index, preds=preds)
         stats.log_loss()
         ## anneal
         tf_ratio = tf_ratio * _config['tf_anneal']
