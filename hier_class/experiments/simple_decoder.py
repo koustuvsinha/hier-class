@@ -49,6 +49,7 @@ def exp_config():
     train_test_split = 0.8
     data_type = 'WIKI'
     data_loc = '/home/ml/ksinha4/datasets/data_WIKI'
+    data_path = 'wiki_pruned'
     file_name = 'full_docs_2.csv'
     #data_loc = '/home/ml/ksinha4/datasets/data_WOS/WebOfScience/WOS46985'
     tokenization = 'word'
@@ -76,7 +77,7 @@ def train(_config, _run):
         _config['exp_name'] = _run.start_time.strftime('%Y-%m-%d_%H:%M:%S')
     writer = SummaryWriter(log_dir='../../logs/' + _config['exp_name'])
     data = data_utils.Data_Utility(
-        exp_name=_config['exp_name'],
+        data_path=_config['data_path'],
         train_test_split=_config['train_test_split'],
         max_vocab=_config['max_vocab'],
         max_word_doc=_config['max_word_doc'],

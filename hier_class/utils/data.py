@@ -22,10 +22,10 @@ logging.basicConfig(
 )
 
 class Data_Utility(data.Dataset):
-    def __init__(self, exp_name='', train_test_split=0.8, decoder_ready=False,max_vocab=-1,max_word_doc=-1, level=-1):
+    def __init__(self, data_path='', train_test_split=0.8, decoder_ready=False,max_vocab=-1,max_word_doc=-1, level=-1):
         """
 
-        :param exp_name:
+        :param data_path:
         :param train_test_split:
         :param decoder_ready: If decoder_ready = True, then return labels with a starting 0 label and shift all labels by 1
         """
@@ -42,7 +42,7 @@ class Data_Utility(data.Dataset):
         self.max_word_doc = max_word_doc
         self.level = level # select which levels to choose. if -1, then choose all
         parent_dir = dirname(dirname(dirname(abspath(__file__))))
-        self.save_path_base = parent_dir + '/saved/' + exp_name
+        self.save_path_base = parent_dir + '/data/' + data_path
         if not os.path.exists(self.save_path_base):
             os.makedirs(self.save_path_base)
 
@@ -262,13 +262,13 @@ class Data_Utility(data.Dataset):
         self.train_indices = shuffled[:num_train]
         self.test_indices = shuffled[num_train:]
 
-    def load_embedding(self,embedding_file='', embedding_saved='', embedding_dim=300, exp_name=''):
+    def load_embedding(self,embedding_file='', embedding_saved='', embedding_dim=300, data_path=''):
         """
         Initialize the embedding from pre-trained vectors
         :param embedding_file: pre-trained vector file, eg glove.txt
         :param embedding_saved: file to save the embeddings
         :param embedding_dim: dimensions, eg 300
-        :param exp_name: experiment name
+        :param data_path: data path
         :return: embedding matrix
         """
 
@@ -276,7 +276,7 @@ class Data_Utility(data.Dataset):
         word_dict = self.word2id
 
         parent_dir = dirname(dirname(dirname(abspath(__file__))))
-        save_path_base = parent_dir + '/saved/' + exp_name
+        save_path_base = parent_dir + '/data/' + data_path
         if not os.path.exists(save_path_base):
             os.makedirs(save_path_base)
         emb_saved_full_path = save_path_base + embedding_saved
