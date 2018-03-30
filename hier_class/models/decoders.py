@@ -165,7 +165,7 @@ class SimpleMLPDecoder(nn.Module):
                  label_sizes=[], label2id={},
                  total_cats=1,pad_token=1,
                  taxonomy=None,temperature=0.8, max_words=600,
-                 d_k=64, d_v=64, n_head=1, dropout=0.1,gpu=0,
+                 d_k=64, d_v=64, n_head=1, dropout=0.1,gpu=0, prev_emb=False
                  **kwargs):
         """
 
@@ -202,8 +202,12 @@ class SimpleMLPDecoder(nn.Module):
             total_cats,
             cat_emb_dim
         )
+        # if prev_emb is True, then to use previous embedding make the mult factor = 3
+        mult_factor = 2
+        if prev_emb:
+            mult_factor = 3
         self.encoder = nn.LSTM(embedding_dim, embedding_dim, bidirectional=True, batch_first=True)
-        self.linear = nn.Linear(embedding_dim * 2, embedding_dim)
+        self.linear = nn.Linear(embedding_dim * mult_factor, embedding_dim)
         self.linear2 = nn.Linear(embedding_dim, label_size)
         self.relu = nn.ReLU()
         self.dropout = nn.Dropout(dropout)
@@ -252,26 +256,29 @@ class SimpleMLPDecoder(nn.Module):
 
         return output
 
-    def forward(self, encoder_outputs, inp_cat,level=0):
+    def forward(self, encoder_outputs, inp_cat,level=0, prev_emb=None, use_prev_emb=False):
         """
 
         :param doc_emb:
         :param hidden_state:
+        :param prev_emb if not None, then concat category embedding with previous step document embedding
         :return:
         """
         cat_emb = self.category_embedding(inp_cat)
         cat_emb = cat_emb.unsqueeze(1)
         doc_emb, attn = self.attentions[level](cat_emb, encoder_outputs, encoder_outputs)
-        #x = torch.cat((doc_emb, cat_emb), 1)
         doc_emb = doc_emb.squeeze(1)
+        if use_prev_emb:
+            doc_emb = torch.cat((prev_emb, doc_emb), 1)
         x = self.linear(doc_emb)
-        x = self.relu(x)
+        hidden_rep = self.dropout(x)
+        x = self.relu(hidden_rep)
         x = self.linear2(x)
         x = self.dropout(x)
         #x = self.linears[level](x)
         logits = self.temp_logsoftmax(x, self.temperature)
 
-        return logits, attn
+        return logits, attn, hidden_rep
 
     def batchNLLLoss(self, src, src_lengths, categories, tf_ratio=1.0, loss_focus=[],
                      loss_weights=None, renormalize=False, max_categories=3, batch_masking=False):
@@ -281,9 +288,6 @@ class SimpleMLPDecoder(nn.Module):
         :param src_lengths: length of the docs
         :param categories: hierarchical categories
         :param tf_ratio: teacher forcing ratio
-
-        TODO: change the evaluation criteria - only calculate accuracy of next level
-        TODO: for the correct classifications of first level
         :return:
         """
         loss_fn = nn.NLLLoss(weight=loss_weights)
@@ -291,6 +295,7 @@ class SimpleMLPDecoder(nn.Module):
         loss = 0
         accs = []
         encoder_outputs = self.encode(src, src_lengths)
+        hidden_rep = self.init_hidden(src.size(0))
         cat_len = categories.size(1) - 1
         assert cat_len == max_categories
         out = None
@@ -307,7 +312,8 @@ class SimpleMLPDecoder(nn.Module):
                     print(inp_cat)
                     raise RuntimeError("category ID outside of embedding")
                 # hidden_state = torch.cat((hidden_state, context_state), 2)
-                out, attn = self.forward(encoder_outputs, inp_cat, i)
+                out, attn, hidden_rep = self.forward(encoder_outputs, inp_cat, i, prev_emb=hidden_rep,
+                                                     use_prev_emb=True)
                 if renormalize:
                     out = self.mask_renormalize(inp_cat, out)
                 target_cat = categories[:, i+1]
@@ -337,7 +343,8 @@ class SimpleMLPDecoder(nn.Module):
                     print(out.size())
                     raise RuntimeError("category ID outside of embedding")
                 #inp_cat = categories[:, i]
-                out, attn = self.forward(encoder_outputs, inp_cat, i)
+                out, attn, hidden_rep = self.forward(encoder_outputs, inp_cat, i, prev_emb=hidden_rep,
+                                                     use_prev_emb=True)
                 if renormalize:
                     out = self.mask_renormalize(inp_cat, out)
                 target_cat = categories[:, i + 1]
