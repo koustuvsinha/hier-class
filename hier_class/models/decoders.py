@@ -165,7 +165,7 @@ class SimpleMLPDecoder(nn.Module):
                  label_sizes=[], label2id={},
                  total_cats=1,pad_token=1,
                  taxonomy=None,temperature=0.8, max_words=600,
-                 d_k=64, d_v=64, n_head=1, dropout=0.1,
+                 d_k=64, d_v=64, n_head=1, dropout=0.1,gpu=0,
                  **kwargs):
         """
 
@@ -187,6 +187,7 @@ class SimpleMLPDecoder(nn.Module):
         self.temperature = temperature
         self.label2id = label2id
         self.total_cats = total_cats
+        self.gpu = gpu
         self.embedding = nn.Embedding(
             vocab_size,
             embedding_dim,
@@ -205,13 +206,14 @@ class SimpleMLPDecoder(nn.Module):
         self.linear = nn.Linear(embedding_dim * 2, embedding_dim)
         self.linear2 = nn.Linear(embedding_dim, label_size)
         self.relu = nn.ReLU()
+        self.dropout = nn.Dropout(dropout)
         #self.linear1 = nn.Linear(embedding_dim + cat_emb_dim, self.label_sizes[0])
         #self.linear2 = nn.Linear(embedding_dim + cat_emb_dim, self.label_sizes[1])
         #self.linear3 = nn.Linear(embedding_dim + cat_emb_dim, self.label_sizes[2])
         #self.linears = [self.linear1, self.linear2, self.linear3]
         self.taxonomy = taxonomy
         self.max_words = max_words
-        self.attention_1 = DocumentLevelAttention(embedding_dim,d_k,d_v,dropout=dropout)
+        self.attention_1 = DocumentLevelAttention(embedding_dim,d_k,d_v, n_head=2, dropout=dropout)
         self.attention_2 = DocumentLevelAttention(embedding_dim, d_k, d_v, n_head=2, dropout=dropout)
         self.attention_3 = DocumentLevelAttention(embedding_dim, d_k, d_v, n_head=8, dropout=dropout)
         self.attentions = [self.attention_1, self.attention_2, self.attention_3]
@@ -250,9 +252,6 @@ class SimpleMLPDecoder(nn.Module):
 
         return output
 
-    def attend(self, logits):
-        pass
-
     def forward(self, encoder_outputs, inp_cat,level=0):
         """
 
@@ -268,13 +267,14 @@ class SimpleMLPDecoder(nn.Module):
         x = self.linear(doc_emb)
         x = self.relu(x)
         x = self.linear2(x)
+        x = self.dropout(x)
         #x = self.linears[level](x)
         logits = self.temp_logsoftmax(x, self.temperature)
 
-        return logits
+        return logits, attn
 
     def batchNLLLoss(self, src, src_lengths, categories, tf_ratio=1.0, loss_focus=[],
-                     loss_weights=None, renormalize=False):
+                     loss_weights=None, renormalize=False, max_categories=3, batch_masking=False):
         """
         Calculate the negative log likelihood loss while predicting the categories
         :param src: documents to be classified
@@ -292,10 +292,12 @@ class SimpleMLPDecoder(nn.Module):
         accs = []
         encoder_outputs = self.encode(src, src_lengths)
         cat_len = categories.size(1) - 1
-        assert cat_len == 3
+        assert cat_len == max_categories
         out = None
         out_p = None
         #pdb.set_trace()
+        level_cs = []
+        attns = []
 
         use_tf = True if (random.random() < tf_ratio) else False
         if use_tf:
@@ -305,7 +307,7 @@ class SimpleMLPDecoder(nn.Module):
                     print(inp_cat)
                     raise RuntimeError("category ID outside of embedding")
                 # hidden_state = torch.cat((hidden_state, context_state), 2)
-                out = self.forward(encoder_outputs, inp_cat, i)
+                out, attn = self.forward(encoder_outputs, inp_cat, i)
                 if renormalize:
                     out = self.mask_renormalize(inp_cat, out)
                 target_cat = categories[:, i+1]
@@ -314,9 +316,14 @@ class SimpleMLPDecoder(nn.Module):
                 _, out_pred = torch.max(out.data, 1)
                 acc = (out_pred == target_cat.data).sum() / len(target_cat)
                 accs.append(acc)
+                attns.append(attn)
         else:
-            batch_mask = torch.ones(encoder_outputs.size(0)).long()
-            batch_mask = batch_mask.cuda()
+            if batch_masking:
+                batch_mask = torch.ones(encoder_outputs.size(0)).long()
+                batch_mask = batch_mask.cuda(self.gpu)
+            else:
+                batch_mask = None
+            last_p = 1
             for i in range(cat_len):
                 #pdb.set_trace()
                 if i == 0:
@@ -330,26 +337,31 @@ class SimpleMLPDecoder(nn.Module):
                     print(out.size())
                     raise RuntimeError("category ID outside of embedding")
                 #inp_cat = categories[:, i]
-                out = self.forward(encoder_outputs, inp_cat, i)
+                out, attn = self.forward(encoder_outputs, inp_cat, i)
                 if renormalize:
                     out = self.mask_renormalize(inp_cat, out)
                 target_cat = categories[:, i + 1]
-                # mask by batch
-                #pdb.set_trace()
-                target_cat = target_cat * Variable(batch_mask)
-                out = (out.transpose(0,1) * Variable(batch_mask.float())).transpose(0,1)
+                if batch_masking:
+                    target_cat = target_cat * Variable(batch_mask)
+                    out = (out.transpose(0,1) * Variable(batch_mask.float())).transpose(0,1)
                 loss += loss_fn(out, target_cat) * loss_focus[i]
                 #out = self.mask_renormalize(inp_cat, out)
                 _, out_pred = torch.max(out.data, 1)
                 acc = (out_pred == target_cat.data).sum() / len(target_cat)
-                level_correct = (out_pred == target_cat.data).long()
-                batch_mask = batch_mask * level_correct
-                # for next level, mask batch for the correct outputs
-                # and mask it again with the current batch mask
+                if batch_masking:
+                    # for next level, mask batch for the correct outputs
+                    # and mask it again with the current batch mask
+                    level_correct = (out_pred == target_cat.data).long()
+                    batch_mask = batch_mask * level_correct
+
+                #acc = last_p * acc
+                #last_p = acc
+                #level_cs.append(torch.sum(level_correct))
 
                 accs.append(acc)
+                attns.append(attn)
 
-        return loss, accs
+        return loss, accs, attns
 
     def mask_renormalize(self, parent_class_batch, logits):
         """
@@ -365,7 +377,7 @@ class SimpleMLPDecoder(nn.Module):
                 child_classes = self.taxonomy[parent_class]
                 for cc in child_classes:
                     mask[batch_id][cc] = 0
-        mask = mask.byte().cuda()
+        mask = mask.byte().cuda(self.gpu)
         logits.masked_fill_(mask, -float('inf'))
         return logits
 

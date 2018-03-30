@@ -22,7 +22,7 @@ logging.basicConfig(
 )
 
 class Data_Utility(data.Dataset):
-    def __init__(self, exp_name='', train_test_split=0.8, decoder_ready=False,max_vocab=-1,max_word_doc=-1):
+    def __init__(self, exp_name='', train_test_split=0.8, decoder_ready=False,max_vocab=-1,max_word_doc=-1, level=-1):
         """
 
         :param exp_name:
@@ -40,6 +40,7 @@ class Data_Utility(data.Dataset):
         self.decoder_ready = decoder_ready
         self.max_vocab = max_vocab
         self.max_word_doc = max_word_doc
+        self.level = level # select which levels to choose. if -1, then choose all
         parent_dir = dirname(dirname(dirname(abspath(__file__))))
         self.save_path_base = parent_dir + '/saved/' + exp_name
         if not os.path.exists(self.save_path_base):
@@ -216,41 +217,40 @@ class Data_Utility(data.Dataset):
         self.data = processed_dict['data_m']['data']
         self.labels = processed_dict['data_m']['labels']
         self.label_meta = processed_dict['dict_m']['label_meta']
-        if self.decoder_ready:
-            # fix the labels. during data collection, the labels where taken as unique id per level.
-            # to make all levels unique here for the decoder to work, we need to make them sequential
-            label2id = {}
-            # save a hierarchy of decoder levels
-            taxonomy = {}
-            # get the max number of labels per level
-            max_levels = max([len(label) for label in self.labels])
-            ct  = 1
-            for i in range(max_levels):
-                labels_in_level = set([label[i] for label in self.labels])
-                for lb in labels_in_level:
-                    # add a special structure so it can be recovered later
-                    label2id['l{}_{}'.format(i,lb)] = ct
-                    ct +=1
-            self.decoder_labels = []
-            for labels in self.labels:
-                row_labels = [0] # start with the go label
-                for i, label in enumerate(labels):
-                    row_labels.append(label2id['l{}_{}'.format(i,label)])
-                self.decoder_labels.append(row_labels)
-            self.decoder_num_labels = ct
-            # build the taxonomy
-            taxonomy[0] = set()
-            for labels in self.labels:
-                new_dec_labels = [label2id['l{}_{}'.format(level,label)] for level,label in enumerate(labels)]
-                parent = 0
-                for dec_label in new_dec_labels:
-                    if parent not in taxonomy:
-                        taxonomy[parent] = set()
-                    taxonomy[parent].add(dec_label)
-                    parent = dec_label
-            self.taxonomy = taxonomy
-            self.label2id = label2id
-            self.id2label = {v:k for k,v in label2id.items()}
+        # fix the labels. during data collection, the labels where taken as unique id per level.
+        # to make all levels unique here for the decoder to work, we need to make them sequential
+        label2id = {}
+        # save a hierarchy of decoder levels
+        taxonomy = {}
+        # get the max number of labels per level
+        max_levels = max([len(label) for label in self.labels])
+        ct  = 1
+        for i in range(max_levels):
+            labels_in_level = set([label[i] for label in self.labels])
+            for lb in labels_in_level:
+                # add a special structure so it can be recovered later
+                label2id['l{}_{}'.format(i,lb)] = ct
+                ct +=1
+        self.decoder_labels = []
+        for labels in self.labels:
+            row_labels = [0] # start with the go label
+            for i, label in enumerate(labels):
+                row_labels.append(label2id['l{}_{}'.format(i,label)])
+            self.decoder_labels.append(row_labels)
+        self.decoder_num_labels = ct
+        # build the taxonomy
+        taxonomy[0] = set()
+        for labels in self.labels:
+            new_dec_labels = [label2id['l{}_{}'.format(level,label)] for level,label in enumerate(labels)]
+            parent = 0
+            for dec_label in new_dec_labels:
+                if parent not in taxonomy:
+                    taxonomy[parent] = set()
+                taxonomy[parent].add(dec_label)
+                parent = dec_label
+        self.taxonomy = taxonomy
+        self.label2id = label2id
+        self.id2label = {v:k for k,v in label2id.items()}
 
         self.split_indices()
 
@@ -335,9 +335,12 @@ class Data_Utility(data.Dataset):
         data = self.data[rows[index]]
         data = [self.word2id[word] if word in self.word2id else self.word2id[constants.UNK_WORD]
                 for word in data]
-        #labels = self.labels[rows[index]]
+        labels = self.labels[rows[index]]
         if self.decoder_ready:
             labels = self.decoder_labels[rows[index]]
+        elif self.level != -1:
+            labels = self.labels[rows[index]]
+            labels = [0, labels[self.level]]
         data = torch.LongTensor(data)
         return data, labels
 

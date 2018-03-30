@@ -25,6 +25,7 @@ from hier_class.models import decoders
 from hier_class.utils import constants as CONSTANTS
 from hier_class.utils import model_utils as mu
 from hier_class.utils.stats import Statistics
+import pdb
 
 ex = Experiment()
 
@@ -53,11 +54,12 @@ def exp_config():
     tokenization = 'word'
     batch_size = 16
     epochs = 60
-    level = 2
+    level = -1
     levels = 3
     cat_emb_dim = 64
     tf_ratio=0.5
     tf_anneal=0.8
+    validation_tf = 0
     weight_decay=1e-6
     temperature = 1
     loss_focus = [1,1,1]
@@ -65,6 +67,7 @@ def exp_config():
     dynamic_dictionary = True
     max_vocab = 100000
     max_word_doc = -1
+    decoder_ready = True
 
 @ex.automain
 def train(_config, _run):
@@ -75,10 +78,14 @@ def train(_config, _run):
     data = data_utils.Data_Utility(
         exp_name=_config['exp_name'],
         train_test_split=_config['train_test_split'],
-        decoder_ready=True,
         max_vocab=_config['max_vocab'],
-        max_word_doc=_config['max_word_doc']
+        max_word_doc=_config['max_word_doc'],
+        level = _config['level'],
+        decoder_ready=_config['decoder_ready']
     )
+    max_categories = _config['levels']
+    if _config['level'] != -1:
+        max_categories = 1
     logging.info("Loading data")
     data.load(_config['data_type'],_config['data_loc'],_config['file_name'],_config['tokenization'])
     test_data = copy.deepcopy(data)
@@ -93,14 +100,22 @@ def train(_config, _run):
         nl = len(data.get_level_labels(level))
         logging.info('Classes in level {} = {}'.format(level, nl))
         cat_per_level.append(nl)
+    label_size = data.decoder_num_labels
+    if _config['level'] != -1:
+        # check if _config['level'] is not arbitrary
+        if _config['level'] >= len(cat_per_level):
+            raise RuntimeError("config['level'] cannot be more than config['levels']")
+        logging.info("Choosing only {} level to classify".format(_config['level']))
+        label_size = cat_per_level[_config['level']]
     model_params.update({
         'vocab_size': len(data.word2id),
-        'label_size': data.decoder_num_labels,
+        'label_size': label_size,
         'pad_token': data.word2id[CONSTANTS.PAD_WORD],
         'total_cats': sum(cat_per_level) + 1,
         'taxonomy': data.taxonomy,
         'label_sizes':cat_per_level,
-        'label2id': data.label2id
+        'label2id': data.label2id,
+        'gpu':_config['gpu']
     })
 
     ## calculate label weights
@@ -110,8 +125,12 @@ def train(_config, _run):
     level2w = {}
     for i,lb in enumerate(_config['label_weights']):
         level2w[i] = lb
-    label_weights = [0.0]
-    for level in range(3):
+    label_weights = []
+    if _config['level'] == -1:
+        label_weights = [0.0]
+    for level in range(_config['levels']):
+        if _config['level'] != -1 and _config['level'] != level:
+            continue
         labels = list(sorted(data.get_level_labels(level)))
         for lb in labels:
             label_weights.append(level2w[level])
@@ -136,7 +155,10 @@ def train(_config, _run):
     pytorch_version = torch.__version__
     logging.info("Using pytorch version : {}".format(pytorch_version))
     epochs = _config['epochs']
-    stats = Statistics(batch_size,3,_config['exp_name'])
+    max_levels = _config['levels']
+    if _config['level'] != -1:
+        max_levels = 1
+    stats = Statistics(batch_size,max_levels,_config['exp_name'])
     logging.info("With focus : {}".format(_config['loss_focus']))
     all_step = 0
     for epoch in range(epochs):
@@ -169,10 +191,11 @@ def train(_config, _run):
                 labels = labels.cuda(gpu)
             #    cat_labels = cat_labels.cuda(gpu)
             optimizer.zero_grad()
-            loss, accs = model.batchNLLLoss(src_data, src_lengths, labels,
+            loss, accs, _ = model.batchNLLLoss(src_data, src_lengths, labels,
                                             tf_ratio=tf_ratio,
                                             loss_focus=_config['loss_focus'],
-                                            loss_weights=label_weights)
+                                            loss_weights=label_weights,
+                                            max_categories=max_categories)
             loss.backward()
             #m_params = [p for p in model.parameters() if p.requires_grad]
             #nn.utils.clip_grad_norm(m_params, 5)
@@ -181,6 +204,9 @@ def train(_config, _run):
             #break
         ## validate
         model.eval()
+        ## store the attention weights and words in a separate file for
+        ## later visualization
+        storage = []
         for src_data, src_lengths, src_labels in test_data_iter:
             labels =  Variable(torch.LongTensor(src_labels), volatile=True)
             #cat_labels = Variable(torch.LongTensor(cat_labels))
@@ -189,10 +215,13 @@ def train(_config, _run):
                 src_data = src_data.cuda(gpu)
             #    cat_labels = cat_labels.cuda(gpu)
             labels = labels.cuda(gpu)
-            loss, accs = model.batchNLLLoss(src_data, src_lengths, labels,
-                                            tf_ratio=0,
+            loss, accs, attns = model.batchNLLLoss(src_data, src_lengths, labels,
+                                            tf_ratio=_config['validation_tf'],
                                             loss_focus=_config['loss_focus'],
-                                            loss_weights=label_weights)
+                                            loss_weights=label_weights,
+                                            max_categories=max_categories)
+
+            #src_d = src_data.data
             stats.update_validation(loss.data[0],accs)
         stats.log_loss()
         ## anneal
