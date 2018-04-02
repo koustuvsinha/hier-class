@@ -277,6 +277,7 @@ class SimpleMLPDecoder(nn.Module):
         """
         cat_emb = self.category_embedding(inp_cat)
         cat_emb = cat_emb.unsqueeze(1)
+        # TODO: add attention mask?
         doc_emb, attn = self.attentions[level](cat_emb, encoder_outputs, encoder_outputs)
         doc_emb = doc_emb.squeeze(1)
         if use_prev_emb:
@@ -332,7 +333,7 @@ class SimpleMLPDecoder(nn.Module):
                 loss += loss_fn(out, target_cat) * loss_focus[i]
                 #out = self.mask_renormalize(inp_cat, out)
                 _, out_pred = torch.max(out.data, 1)
-                acc = (out_pred == target_cat.data).sum() / len(target_cat)
+                acc = (out_pred == target_cat.data).float().mean()
                 accs.append(acc)
                 attns.append(attn)
                 predictions.append(out_pred)
@@ -367,7 +368,9 @@ class SimpleMLPDecoder(nn.Module):
                 loss += loss_fn(out, target_cat) * loss_focus[i]
                 #out = self.mask_renormalize(inp_cat, out)
                 _, out_pred = torch.max(out.data, 1)
-                acc = (out_pred == target_cat.data).sum() / len(target_cat)
+                acc = (out_pred == target_cat.data).float().mean()
+                #print(out_pred)
+                #print(target_cat.data)
                 if batch_masking:
                     # for next level, mask batch for the correct outputs
                     # and mask it again with the current batch mask

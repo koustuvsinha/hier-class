@@ -20,6 +20,7 @@ logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(message)s'
 )
+import pdb
 
 class Data_Utility(data.Dataset):
     def __init__(self, data_path='', train_test_split=0.8, decoder_ready=False,max_vocab=-1,max_word_doc=-1, level=-1):
@@ -255,12 +256,33 @@ class Data_Utility(data.Dataset):
         self.split_indices()
 
     def split_indices(self):
+        ## TODO: evenly split training and test so that test has atleast n examples of the categories
+        end_labels = [labels[-1] for labels in self.labels]
+        #print(len(end_labels))
+        #print(len(set(end_labels)))
+        label2rowid = {}
+        for i,label in enumerate(end_labels):
+            if label not in label2rowid:
+                label2rowid[label] = []
+            label2rowid[label].append(i)
+        # shuffle within labelids
+        for i,label in enumerate(end_labels):
+            label2rowid[label] = random.sample(label2rowid[label], len(label2rowid[label]))
+        train_indices = [v[:int(np.floor(len(v) * self.split_ratio))] for k,v in label2rowid.items()]
+        train_indices = [v for k in train_indices for v in k]
+        test_indices = [v[int(np.floor(len(v) * self.split_ratio)):] for k,v in label2rowid.items()]
+        test_indices = [v for k in test_indices for v in k]
+        # make sure no data bleeding has happened
+        assert len(set(train_indices).intersection(set(test_indices))) == 0
+        
+        self.train_indices = random.sample(train_indices, len(train_indices))
+        self.test_indices = random.sample(test_indices, len(test_indices))
         ## Split indices for train test
-        all_indices = range(len(self.data))
-        shuffled = random.sample(all_indices, len(all_indices))
-        num_train = int(np.floor(len(all_indices) * self.split_ratio))
-        self.train_indices = shuffled[:num_train]
-        self.test_indices = shuffled[num_train:]
+        ##all_indices = range(len(self.data))
+        ##shuffled = random.sample(all_indices, len(all_indices))
+        ##num_train = int(np.floor(len(all_indices) * self.split_ratio))
+        ##self.train_indices = shuffled[:num_train]
+        ##self.test_indices = shuffled[num_train:]
 
     def load_embedding(self,embedding_file='', embedding_saved='', embedding_dim=300, data_path=''):
         """
@@ -335,7 +357,7 @@ class Data_Utility(data.Dataset):
         labels = self.labels[row_index]
         if self.decoder_ready:
             labels = self.decoder_labels[row_index]
-        elif self.level != -1:
+        if self.level != -1:
             labels = self.labels[row_index]
             labels = [0, labels[self.level]]
         data = torch.LongTensor(data)

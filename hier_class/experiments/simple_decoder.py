@@ -46,7 +46,7 @@ def exp_config():
     lr = 1e-3
     log_interval = 200
     save_interval = 1000
-    train_test_split = 0.7
+    train_test_split = 0.9
     data_type = 'WIKI'
     data_loc = '/home/ml/ksinha4/datasets/data_WIKI'
     data_path = 'wiki_pruned'
@@ -70,6 +70,7 @@ def exp_config():
     max_word_doc = -1
     decoder_ready = True
     prev_emb = True
+    n_heads = [2,2,8]
 
 @ex.automain
 def train(_config, _run):
@@ -145,6 +146,8 @@ def train(_config, _run):
     print(model)
     m_params = [p for p in model.parameters() if p.requires_grad]
     optimizer = _config['optimizer']
+    num_params = sum([np.prod(p.size()) for p in m_params])
+    logging.info("Model parameters : {}".format(num_params))
     if optimizer == 'adam':
         optimizer = optim.Adam(m_params, lr=_config['lr'], weight_decay=_config['weight_decay'])
     else:
@@ -160,7 +163,7 @@ def train(_config, _run):
     max_levels = _config['levels']
     if _config['level'] != -1:
         max_levels = 1
-    stats = Statistics(batch_size,max_levels,_config['exp_name'],data=data)
+    stats = Statistics(batch_size,max_levels,_config['exp_name'],data=data,n_heads=_config['n_heads'],level=_config['level'])
     logging.info("With focus : {}".format(_config['loss_focus']))
     all_step = 0
     for epoch in range(epochs):
