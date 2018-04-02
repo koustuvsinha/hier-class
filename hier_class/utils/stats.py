@@ -103,7 +103,7 @@ class Statistics():
             self.writer.add_scalar('train_acc_{}'.format(level),
                                    self.get_train_acc(level), self.epoch)
             logging.info("Validation accuracy for level {} : {}".format(
-                level, self.get_valid_acc(self.epoch, level)))
+                level, self.get_valid_acc(level)))
             self.writer.add_scalar('valid_acc_{}'.format(level),
                                    self.get_valid_acc(level), self.epoch)
         self.reset()

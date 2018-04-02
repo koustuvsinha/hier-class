@@ -274,7 +274,7 @@ class Data_Utility(data.Dataset):
         test_indices = [v for k in test_indices for v in k]
         # make sure no data bleeding has happened
         assert len(set(train_indices).intersection(set(test_indices))) == 0
-        
+
         self.train_indices = random.sample(train_indices, len(train_indices))
         self.test_indices = random.sample(test_indices, len(test_indices))
         ## Split indices for train test
