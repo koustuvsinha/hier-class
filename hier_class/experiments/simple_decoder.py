@@ -21,7 +21,7 @@ import copy
 import json
 from tqdm import tqdm
 from hier_class.utils import data as data_utils
-from hier_class.models import decoders
+from hier_class.models import decoders, baselines
 from hier_class.utils import constants as CONSTANTS
 from hier_class.utils import model_utils as mu
 from hier_class.utils.stats import Statistics
@@ -71,6 +71,7 @@ def exp_config():
     decoder_ready = True
     prev_emb = True
     n_heads = [2,2,8]
+    baseline = False
 
 @ex.automain
 def train(_config, _run):
@@ -142,7 +143,10 @@ def train(_config, _run):
 
 
     #model = decoders.SimpleDecoder(**model_params)
-    model = decoders.SimpleMLPDecoder(**model_params)
+    if _config['baseline']:
+        model = baselines.BiLSTM_MLP(**model_params)
+    else:
+        model = decoders.SimpleMLPDecoder(**model_params)
     print(model)
     m_params = [p for p in model.parameters() if p.requires_grad]
     optimizer = _config['optimizer']
@@ -200,7 +204,8 @@ def train(_config, _run):
                                             tf_ratio=tf_ratio,
                                             loss_focus=_config['loss_focus'],
                                             loss_weights=label_weights,
-                                            max_categories=max_categories)
+                                            max_categories=max_categories,
+                                            target_level=1)
             loss.backward()
             #m_params = [p for p in model.parameters() if p.requires_grad]
             #nn.utils.clip_grad_norm(m_params, 5)
@@ -224,7 +229,8 @@ def train(_config, _run):
                                             tf_ratio=_config['validation_tf'],
                                             loss_focus=_config['loss_focus'],
                                             loss_weights=label_weights,
-                                            max_categories=max_categories)
+                                            max_categories=max_categories,
+                                            target_level=1)
 
             #src_d = src_data.data
             stats.update_validation(loss.data[0],accs, attn=attns, src=src_index, preds=preds)
@@ -233,8 +239,6 @@ def train(_config, _run):
         tf_ratio = tf_ratio * _config['tf_anneal']
         ## saving model
         mu.save_model(model,0,0,_config['exp_name'],model_params)
-
-    stats.cleanup()
 
 
 

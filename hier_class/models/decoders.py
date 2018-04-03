@@ -165,7 +165,7 @@ class SimpleMLPDecoder(nn.Module):
                  label_sizes=[], label2id={},
                  total_cats=1,pad_token=1,
                  taxonomy=None,temperature=0.8, max_words=600,
-                 d_k=64, d_v=64, n_heads=[2,2,8], dropout=0.1,gpu=0, prev_emb=False,
+                 d_k=64, d_v=64, n_heads=[2,2,8], dropout=0,gpu=0, prev_emb=False,
                  **kwargs):
         """
 
@@ -293,7 +293,8 @@ class SimpleMLPDecoder(nn.Module):
         return logits, attn, hidden_rep
 
     def batchNLLLoss(self, src, src_lengths, categories, tf_ratio=1.0, loss_focus=[],
-                     loss_weights=None, renormalize=False, max_categories=3, batch_masking=False):
+                     loss_weights=None, renormalize=False, max_categories=3, batch_masking=False,
+                     target_level=-1):
         """
         Calculate the negative log likelihood loss while predicting the categories
         :param src: documents to be classified
