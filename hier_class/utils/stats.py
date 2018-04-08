@@ -1,7 +1,16 @@
 # class to maintain statistics and logging utils
 
+import torch
 import numpy as np
+import re
+import itertools
+from textwrap import wrap
+import numpy as np
+from sklearn.metrics import confusion_matrix
 from tensorboardX import SummaryWriter
+import matplotlib
+matplotlib.use('Agg')
+import matplotlib.pyplot as plt
 import time
 import json
 import logging
@@ -26,6 +35,8 @@ class Statistics():
         self.validation_loss = []
         self.train_accuracy = []
         self.validation_accuracy = []
+        self.correct_labels = []
+        self.predicted_labels = []
         self.batch_size = batch_size
         self.max_levels = max_levels
         self.exp_name = exp_name
@@ -53,9 +64,12 @@ class Statistics():
         self.train_accuracy.append(train_accuracy)
         self.step +=1
 
-    def update_validation(self, validation_loss, validation_accuracy, attn=None, src=None, preds=None):
+    def update_validation(self, validation_loss, validation_accuracy, attn=None, src=None, preds=None, correct=None):
         self.validation_loss.append(validation_loss)
         self.validation_accuracy.append(validation_accuracy)
+        self.predicted_labels.append(preds)
+        self.correct_labels.append(correct)
+
         # TODO: store attentions (all layers)
         # TODO: convert src into words and store them in json
         """
@@ -106,6 +120,12 @@ class Statistics():
                 level, self.get_valid_acc(level)))
             self.writer.add_scalar('valid_acc_{}'.format(level),
                                    self.get_valid_acc(level), self.epoch)
+            if level==0:
+                logging.info("Saving confusion matrix for level {}".format(level))
+                correct_labels = flatten([tr[level] for tr in self.correct_labels])
+                predicted_labels = flatten([tr[level] for tr in self.predicted_labels])
+                conf_matrix = plot_confusion_matrix(correct_labels, predicted_labels, range(0, max(correct_labels)))
+                self.writer.add_image('Confusion_Matrix_Level_{}'.format(level),conf_matrix,self.epoch)
         self.reset()
 
     def reset(self):
@@ -116,10 +136,73 @@ class Statistics():
 
     def __del__(self):
         self.writer.export_scalars_to_json(
-            '../logs/{}_all_scalars.json'.format(self.exp_name))
+            '../../logs/{}_all_scalars.json'.format(self.exp_name))
         self.writer.close()
 
 
+def plot_confusion_matrix(correct_labels, predict_labels, labels, title='Confusion matrix', normalize=False):
+    '''
+    Source: https://stackoverflow.com/questions/41617463/tensorflow-confusion-matrix-in-tensorboard
+    Parameters:
+        correct_labels                  : These are your true classification categories.
+        predict_labels                  : These are you predicted classification categories
+        labels                          : This is a lit of labels which will be used to display the axix labels
+        title='Confusion matrix'        : Title for your matrix
+        tensor_name = 'MyFigure/image'  : Name for the output summay tensor
+
+    Returns:
+        summary: TensorFlow summary
+
+    Other itema to note:
+        - Depending on the number of category and the data , you may have to modify the figzie, font sizes etc.
+        - Currently, some of the ticks dont line up due to rotations.
+    '''
+    cm = confusion_matrix(correct_labels, predict_labels, labels=labels)
+    if normalize:
+        cm = cm.astype('float')*10 / cm.sum(axis=1)[:, np.newaxis]
+        cm = np.nan_to_num(cm, copy=True)
+        cm = cm.astype('int')
+
+    np.set_printoptions(precision=2)
+    ###fig, ax = matplotlib.figure.Figure()
+
+    fig = plt.figure(figsize=(7, 7), dpi=320, facecolor='w', edgecolor='k')
+    ax = fig.add_subplot(1, 1, 1)
+    im = ax.imshow(cm, cmap='Oranges')
+
+    #classes = [re.sub(r'([a-z](?=[A-Z])|[A-Z](?=[A-Z][a-z]))', r'\1 ', x) for x in labels]
+    #classes = ['\n'.join(wrap(l, 40)) for l in classes]
+    classes = [str(lb) for lb in labels]
+
+    tick_marks = np.arange(len(classes))
+
+    ax.set_xlabel('Predicted', fontsize=7)
+    ax.set_xticks(tick_marks)
+    c = ax.set_xticklabels(classes, fontsize=4, rotation=-90,  ha='center')
+    ax.xaxis.set_label_position('bottom')
+    ax.xaxis.tick_bottom()
+
+    ax.set_ylabel('True Label', fontsize=7)
+    ax.set_yticks(tick_marks)
+    ax.set_yticklabels(classes, fontsize=4, va ='center')
+    ax.yaxis.set_label_position('left')
+    ax.yaxis.tick_left()
+
+    for i, j in itertools.product(range(cm.shape[0]), range(cm.shape[1])):
+        ax.text(j, i, format(cm[i, j], 'd') if cm[i,j]!=0 else '.', horizontalalignment="center", fontsize=6, verticalalignment='center', color= "black")
+    fig.set_tight_layout(True)
+    fig.canvas.draw()
+    data = np.fromstring(fig.canvas.tostring_rgb(), dtype=np.uint8, sep='')
+    data = data.reshape(fig.canvas.get_width_height()[::-1] + (3,))
+    return data
+
+def flatten(x):
+    '''
+    Flatten a list of list
+    :param x:
+    :return:
+    '''
+    return [b for a in x for b in a]
 
 
 

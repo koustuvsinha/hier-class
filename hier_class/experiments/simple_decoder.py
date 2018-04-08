@@ -20,6 +20,7 @@ import os
 import copy
 import json
 from tqdm import tqdm
+from sklearn.metrics import confusion_matrix
 from hier_class.utils import data as data_utils
 from hier_class.models import decoders, baselines
 from hier_class.utils import constants as CONSTANTS
@@ -71,14 +72,16 @@ def exp_config():
     decoder_ready = True
     prev_emb = True
     n_heads = [2,2,8]
-    baseline = False
+    baseline = False # either False, or fast / bilstm
 
 @ex.automain
 def train(_config, _run):
     # bookkeeping
     if len(_config['exp_name']) < 1:
         _config['exp_name'] = _run.start_time.strftime('%Y-%m-%d_%H:%M:%S')
-    writer = SummaryWriter(log_dir='../../logs/' + _config['exp_name'])
+    # if experiment folder exists, append timestamp after
+    if os.path.exists('../../logs/' + _config['exp_name']):
+        _config['exp_name'] = _config['exp_name'] + _run.start_time.strftime('%Y-%m-%d_%H:%M:%S')
     data = data_utils.Data_Utility(
         data_path=_config['data_path'],
         train_test_split=_config['train_test_split'],
@@ -144,8 +147,26 @@ def train(_config, _run):
 
     #model = decoders.SimpleDecoder(**model_params)
     if _config['baseline']:
-        model = baselines.BiLSTM_MLP(**model_params)
+        assert _config['level'] != -1
+        label_weights = data.calculate_weights(_config['level'])
+        logging.info("Label weights")
+        logging.info(label_weights)
+        label_weights = torch.FloatTensor(label_weights)
+        label_weights = label_weights.cuda(gpu)
+        if _config['baseline'] == 'fast':
+            model = baselines.FastText(**model_params)
+        elif _config['baseline'] == 'bilstm':
+            model = baselines.BiLSTM_MLP(**model_params)
+        else:
+            raise NotImplementedError("Baseline not implemented")
     else:
+        label_weights = [1.0]
+        for i in range(_config['levels']):
+            label_weights.extend(data.calculate_weights(i+1))
+        logging.info("Label weights")
+        logging.info(label_weights)
+        label_weights = torch.FloatTensor(label_weights)
+        label_weights = label_weights.cuda(gpu)
         model = decoders.SimpleMLPDecoder(**model_params)
     print(model)
     m_params = [p for p in model.parameters() if p.requires_grad]
@@ -200,7 +221,7 @@ def train(_config, _run):
                 labels = labels.cuda(gpu)
             #    cat_labels = cat_labels.cuda(gpu)
             optimizer.zero_grad()
-            loss, accs, _, _ = model.batchNLLLoss(src_data, src_lengths, labels,
+            loss, accs, _, _, _ = model.batchNLLLoss(src_data, src_lengths, labels,
                                             tf_ratio=tf_ratio,
                                             loss_focus=_config['loss_focus'],
                                             loss_weights=label_weights,
@@ -211,7 +232,7 @@ def train(_config, _run):
             #nn.utils.clip_grad_norm(m_params, 5)
             optimizer.step()
             stats.update_train(loss.data[0], accs)
-            #break
+            break
         ## validate
         model.eval()
         ## store the attention weights and words in a separate file for
@@ -225,15 +246,13 @@ def train(_config, _run):
                 src_data = src_data.cuda(gpu)
             #    cat_labels = cat_labels.cuda(gpu)
             labels = labels.cuda(gpu)
-            loss, accs, attns, preds = model.batchNLLLoss(src_data, src_lengths, labels,
+            loss, accs, attns, preds, correct = model.batchNLLLoss(src_data, src_lengths, labels,
                                             tf_ratio=_config['validation_tf'],
                                             loss_focus=_config['loss_focus'],
                                             loss_weights=label_weights,
                                             max_categories=max_categories,
                                             target_level=1)
-
-            #src_d = src_data.data
-            stats.update_validation(loss.data[0],accs, attn=attns, src=src_index, preds=preds)
+            stats.update_validation(loss.data[0],accs, attn=attns, src=src_index, preds=preds, correct=correct)
         stats.log_loss()
         ## anneal
         tf_ratio = tf_ratio * _config['tf_anneal']

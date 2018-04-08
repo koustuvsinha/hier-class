@@ -105,6 +105,7 @@ class Data_Utility(data.Dataset):
                 l_2 = gen_class_id(row, 'l2')
                 l_3 = gen_class_id(row, 'l3')
                 text = row['text']
+                text = text.lower()
                 if '<sent>' in text:
                     # data has been sentence tokenized
                     text = text.split('<sent>')
@@ -368,6 +369,21 @@ class Data_Utility(data.Dataset):
             return len(self.train_indices)
         else:
             return len(self.test_indices)
+
+    def calculate_weights(self, level=0):
+        """
+        Calculate class weights to correct for class imbalance
+        :return:
+        """
+        if self.decoder_ready:
+            all_labels = [lb[level] for lb in self.decoder_labels]
+        else:
+            all_labels = [lb[level] for lb in self.labels]
+        label_count = Counter(all_labels)
+        min_label_count = min(label_count.items(), key=lambda a: a[1])[1]
+        label_weights = [min_label_count / count for label, count in sorted(label_count.items())]
+        return label_weights
+
 
 ### Helper function
 def collate_fn(data):

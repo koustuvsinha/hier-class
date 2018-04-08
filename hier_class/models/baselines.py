@@ -40,6 +40,15 @@ class FastText(nn.Module):
         out = self.logSoftMax(logits.view(-1, self.label_size))
         return out
 
+    def batchNLLLoss(self, src, src_lengths, labels, target_level=0, label_weights=None, **kwargs):
+        loss_fn = nn.NLLLoss(label_weights)
+        target_cat = labels[:, target_level]
+        out = self.forward(src, src_lengths)
+        loss = loss_fn(out, target_cat)
+        _, out_pred = torch.max(out.data, 1)
+        acc = (out_pred == target_cat.data).float().mean()
+        return loss, [acc], None, [out_pred.cpu().numpy()], [target_cat.data.cpu().numpy()]
+
 class BiLSTM_MLP(nn.Module):
     def __init__(self, embedding_dim=300, vocab_size=1, pad_token=0, hidden_dim=3000, label_size=1,
                  temperature=1, **kwargs):
@@ -89,7 +98,7 @@ class BiLSTM_MLP(nn.Module):
         loss = loss_fn(out, target_cat)
         _, out_pred = torch.max(out.data, 1)
         acc = (out_pred == target_cat.data).float().mean()
-        return loss, [acc], None, None
+        return loss, [acc], None, [out_pred.cpu().numpy()], [target_cat.data.cpu().numpy()]
 
 
 

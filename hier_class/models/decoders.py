@@ -316,6 +316,7 @@ class SimpleMLPDecoder(nn.Module):
         #pdb.set_trace()
         level_cs = []
         attns = []
+        correct_labels = []
         predictions = []
 
         use_tf = True if (random.random() < tf_ratio) else False
@@ -337,7 +338,8 @@ class SimpleMLPDecoder(nn.Module):
                 acc = (out_pred == target_cat.data).float().mean()
                 accs.append(acc)
                 attns.append(attn)
-                predictions.append(out_pred)
+                predictions.append(out_pred.cpu().numpy())
+                correct_labels.append(target_cat.data.cpu().numpy())
         else:
             if batch_masking:
                 batch_mask = torch.ones(encoder_outputs.size(0)).long()
@@ -384,9 +386,10 @@ class SimpleMLPDecoder(nn.Module):
 
                 accs.append(acc)
                 attns.append(attn)
-                predictions.append(out_pred)
+                predictions.append(out_pred.cpu().numpy())
+                correct_labels.append(target_cat.data.cpu().numpy())
 
-        return loss, accs, attns, predictions
+        return loss, accs, attns, predictions, correct_labels
 
     def mask_renormalize(self, parent_class_batch, logits):
         """
