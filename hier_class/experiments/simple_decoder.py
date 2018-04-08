@@ -232,7 +232,7 @@ def train(_config, _run):
             #nn.utils.clip_grad_norm(m_params, 5)
             optimizer.step()
             stats.update_train(loss.data[0], accs)
-            break
+            #break
         ## validate
         model.eval()
         ## store the attention weights and words in a separate file for
