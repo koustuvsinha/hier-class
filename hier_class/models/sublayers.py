@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 import torch.nn.init as init
 from hier_class.models.modules import ScaledDotProductAttention, LayerNormalization
+import pdb
 
 class DocumentLevelAttention(nn.Module):
     """

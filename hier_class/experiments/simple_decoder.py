@@ -71,8 +71,10 @@ def exp_config():
     max_word_doc = -1
     decoder_ready = True
     prev_emb = True
-    n_heads = [2,2,8]
+    n_heads = [5,5,8]
     baseline = False # either False, or fast / bilstm
+    debug = False
+    attn_penalty_coeff = 1
 
 @ex.automain
 def train(_config, _run):
@@ -113,7 +115,7 @@ def train(_config, _run):
         if _config['level'] >= len(cat_per_level):
             raise RuntimeError("config['level'] cannot be more than config['levels']")
         logging.info("Choosing only {} level to classify".format(_config['level']))
-        label_size = cat_per_level[_config['level']]
+        label_size = cat_per_level[_config['level']] + 1
     model_params.update({
         'vocab_size': len(data.word2id),
         'label_size': label_size,
@@ -221,18 +223,20 @@ def train(_config, _run):
                 labels = labels.cuda(gpu)
             #    cat_labels = cat_labels.cuda(gpu)
             optimizer.zero_grad()
-            loss, accs, _, _, _ = model.batchNLLLoss(src_data, src_lengths, labels,
+            loss, accs, *_ = model.batchNLLLoss(src_data, src_lengths, labels,
                                             tf_ratio=tf_ratio,
                                             loss_focus=_config['loss_focus'],
                                             loss_weights=label_weights,
                                             max_categories=max_categories,
-                                            target_level=1)
+                                            target_level=1,
+                                            attn_penalty_coeff=_config['attn_penalty_coeff'])
             loss.backward()
             #m_params = [p for p in model.parameters() if p.requires_grad]
             #nn.utils.clip_grad_norm(m_params, 5)
             optimizer.step()
             stats.update_train(loss.data[0], accs)
-            #break
+            if _config['debug']:
+                break
         ## validate
         model.eval()
         ## store the attention weights and words in a separate file for
@@ -246,13 +250,15 @@ def train(_config, _run):
                 src_data = src_data.cuda(gpu)
             #    cat_labels = cat_labels.cuda(gpu)
             labels = labels.cuda(gpu)
-            loss, accs, attns, preds, correct = model.batchNLLLoss(src_data, src_lengths, labels,
+            loss, accs, attns, preds, correct, correct_confs, incorrect_confs = model.batchNLLLoss(src_data, src_lengths, labels,
                                             tf_ratio=_config['validation_tf'],
                                             loss_focus=_config['loss_focus'],
                                             loss_weights=label_weights,
                                             max_categories=max_categories,
-                                            target_level=1)
-            stats.update_validation(loss.data[0],accs, attn=attns, src=src_index, preds=preds, correct=correct)
+                                            target_level=1,
+                                            attn_penalty_coeff=_config['attn_penalty_coeff'])
+            stats.update_validation(loss.data[0],accs, attn=attns, src=src_index, preds=preds, correct=correct,
+                                    correct_confs=correct_confs, incorrect_confs=incorrect_confs)
         stats.log_loss()
         ## anneal
         tf_ratio = tf_ratio * _config['tf_anneal']
