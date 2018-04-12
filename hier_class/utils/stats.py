@@ -37,6 +37,8 @@ class Statistics():
         self.validation_accuracy = []
         self.correct_labels = []
         self.predicted_labels = []
+        self.correct_confs = []
+        self.incorrect_confs = []
         self.batch_size = batch_size
         self.max_levels = max_levels
         self.exp_name = exp_name
@@ -64,11 +66,14 @@ class Statistics():
         self.train_accuracy.append(train_accuracy)
         self.step +=1
 
-    def update_validation(self, validation_loss, validation_accuracy, attn=None, src=None, preds=None, correct=None):
+    def update_validation(self, validation_loss, validation_accuracy, attn=None, src=None,
+                          preds=None, correct=None, correct_confs=None,incorrect_confs=None, **kwargs):
         self.validation_loss.append(validation_loss)
         self.validation_accuracy.append(validation_accuracy)
         self.predicted_labels.append(preds)
         self.correct_labels.append(correct)
+        self.correct_confs.append(correct_confs)
+        self.incorrect_confs.append(incorrect_confs)
 
         # TODO: store attentions (all layers)
         # TODO: convert src into words and store them in json
@@ -103,6 +108,9 @@ class Statistics():
         valid_acc = self.validation_accuracy
         return np.mean([tr[level] for tr in valid_acc])
 
+    def get_valid_conf(self, level=0):
+        return np.mean([tr[level] for tr in self.correct_confs]), np.mean([tr[level] for tr in self.incorrect_confs])
+
     def log_loss(self):
         time_taken = time.time() - self.calc_start
         logging.info('Time taken: {}'.format(time_taken * 1000))
@@ -120,6 +128,15 @@ class Statistics():
                 level, self.get_valid_acc(level)))
             self.writer.add_scalar('valid_acc_{}'.format(level),
                                    self.get_valid_acc(level), self.epoch)
+            valid_conf_true, valid_conf_false = self.get_valid_conf(level)
+            logging.info("Validation correct confidence for level {} : {}".format(
+                level, valid_conf_true
+            ))
+            logging.info("Validation incorrect confidence for level {} : {}".format(
+                level, valid_conf_false
+            ))
+            self.writer.add_scalar('valid_conf_{}'.format(level), valid_conf_true, self.epoch)
+            self.writer.add_scalar('valid_conf_{}'.format(level), valid_conf_false, self.epoch)
             if level==0:
                 logging.info("Saving confusion matrix for level {}".format(level))
                 correct_labels = flatten([tr[level] for tr in self.correct_labels])
@@ -133,6 +150,8 @@ class Statistics():
         self.validation_loss = []
         self.train_accuracy = []
         self.validation_accuracy = []
+        self.correct_confs = []
+        self.incorrect_confs = []
 
     def __del__(self):
         self.writer.export_scalars_to_json(
