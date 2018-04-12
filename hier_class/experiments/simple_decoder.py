@@ -5,6 +5,7 @@ import torch.nn as nn
 import torch.optim as optim
 import torch.utils.data
 from torch.autograd import Variable
+from torch.optim.lr_scheduler import ReduceLROnPlateau
 import numpy as np
 import logging
 from sacred import Experiment
@@ -45,6 +46,7 @@ def exp_config():
     save_name = 'model_epoch_{}_step_{}.mod'
     optimizer = 'adam'
     lr = 1e-3
+    dropout = 0.2
     log_interval = 200
     save_interval = 1000
     train_test_split = 0.9
@@ -75,6 +77,10 @@ def exp_config():
     baseline = False # either False, or fast / bilstm
     debug = False
     attn_penalty_coeff = 1
+    lr_factor = 0.5
+    lr_threshold = 1e-4
+    lr_patience = 2
+
 
 @ex.automain
 def train(_config, _run):
@@ -177,10 +183,19 @@ def train(_config, _run):
     logging.info("Model parameters : {}".format(num_params))
     if optimizer == 'adam':
         optimizer = optim.Adam(m_params, lr=_config['lr'], weight_decay=_config['weight_decay'])
+    elif optimizer == 'rmsprop':
+        optimizer = optim.RMSprop(m_params, lr=_config['lr'], weight_decay=_config['weight_decay'])
     else:
         raise NotImplementedError()
     if use_gpu:
         model = model.cuda(gpu)
+
+    # set learning rate scheduler
+    lr_scheduler = ReduceLROnPlateau(optimizer,
+                                     mode='max',
+                                     factor=_config['lr_factor'],
+                                     threshold=_config['lr_threshold'],
+                                     patience=_config['lr_patience'], verbose=True)
 
     tf_ratio = _config['tf_ratio']
     logging.info("Starting to train")
@@ -260,6 +275,7 @@ def train(_config, _run):
             stats.update_validation(loss.data[0],accs, attn=attns, src=src_index, preds=preds, correct=correct,
                                     correct_confs=correct_confs, incorrect_confs=incorrect_confs)
         stats.log_loss()
+        lr_scheduler.step(stats.get_valid_acc(0))
         ## anneal
         tf_ratio = tf_ratio * _config['tf_anneal']
         ## saving model
