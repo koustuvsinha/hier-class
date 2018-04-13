@@ -45,7 +45,11 @@ def exp_config():
     load_model_path = ''
     save_name = 'model_epoch_{}_step_{}.mod'
     optimizer = 'adam'
-    lr = 1e-3
+    lr = 5e-4
+    lr_factor = 0.2
+    lr_threshold = 1e-4
+    lr_patience = 5
+    clip_grad = 0.5
     dropout = 0.2
     log_interval = 200
     save_interval = 1000
@@ -73,13 +77,10 @@ def exp_config():
     max_word_doc = -1
     decoder_ready = True
     prev_emb = True
-    n_heads = [5,5,8]
+    n_heads = [8,8,8]
     baseline = False # either False, or fast / bilstm
     debug = False
     attn_penalty_coeff = 1
-    lr_factor = 0.5
-    lr_threshold = 1e-4
-    lr_patience = 2
 
 
 @ex.automain
@@ -246,8 +247,8 @@ def train(_config, _run):
                                             target_level=1,
                                             attn_penalty_coeff=_config['attn_penalty_coeff'])
             loss.backward()
-            #m_params = [p for p in model.parameters() if p.requires_grad]
-            #nn.utils.clip_grad_norm(m_params, 5)
+            m_params = [p for p in model.parameters() if p.requires_grad]
+            nn.utils.clip_grad_norm(m_params, _config['clip_grad'])
             optimizer.step()
             stats.update_train(loss.data[0], accs)
             if _config['debug']:
