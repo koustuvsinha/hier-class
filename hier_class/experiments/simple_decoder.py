@@ -37,6 +37,7 @@ def exp_config():
     use_gpu = True
     exp_name = ''
     embedding_dim = 300
+    mlp_hidden_dim = 300
     use_embedding = False
     fix_embeddings = False
     embedding_file = '/home/ml/ksinha4/word_vectors/glove/glove.840B.300d.txt'
@@ -46,7 +47,7 @@ def exp_config():
     save_name = 'model_epoch_{}_step_{}.mod'
     optimizer = 'adam'
     lr = 5e-4
-    lr_factor = 0.2
+    lr_factor = 0.4
     lr_threshold = 1e-4
     lr_patience = 5
     clip_grad = 0.5
@@ -81,10 +82,18 @@ def exp_config():
     baseline = False # either False, or fast / bilstm
     debug = False
     attn_penalty_coeff = 1
+    d_k = 32
+    d_v = 32
+    seed = 111
+    attention_type = 'self'
 
 
 @ex.automain
 def train(_config, _run):
+    # set seed
+    torch.manual_seed(_config['seed'])
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(_config['seed'])
     # bookkeeping
     if len(_config['exp_name']) < 1:
         _config['exp_name'] = _run.start_time.strftime('%Y-%m-%d_%H:%M:%S')
@@ -186,6 +195,8 @@ def train(_config, _run):
         optimizer = optim.Adam(m_params, lr=_config['lr'], weight_decay=_config['weight_decay'])
     elif optimizer == 'rmsprop':
         optimizer = optim.RMSprop(m_params, lr=_config['lr'], weight_decay=_config['weight_decay'])
+    elif optimizer == 'sgd':
+        optimizer = optim.SGD(m_params, lr=_config['lr'], weight_decay=_config['weight_decay'])
     else:
         raise NotImplementedError()
     if use_gpu:

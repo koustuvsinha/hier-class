@@ -5,7 +5,7 @@ import torch.nn.functional as F
 from torch.autograd import Variable
 from torch.nn.utils.rnn import pack_padded_sequence, pad_packed_sequence
 import random
-from hier_class.models.sublayers import DocumentLevelAttention
+from hier_class.models.sublayers import DocumentLevelAttention, DocumentLevelSelfAttention
 import numpy as np
 import time
 import pdb
@@ -161,11 +161,14 @@ class SimpleMLPDecoder(nn.Module):
     Simple hierarchical MLP decoder. Doesn't use a GRU, instead uses an MLP to classify per step.
     """
 
-    def __init__(self, vocab_size=1, embedding_dim=300, cat_emb_dim=64, label_size=1,
+    def __init__(self, vocab_size=1, embedding_dim=300,
+                 mlp_hidden_dim=300,
+                 cat_emb_dim=64, label_size=1,
                  label_sizes=[], label2id={},
                  total_cats=1,pad_token=1,
                  taxonomy=None,temperature=0.8, max_words=600,
-                 d_k=64, d_v=64, n_heads=[2,2,8], dropout=0,gpu=0, prev_emb=False, top_level_cat=0,
+                 d_k=64, d_v=64,da=350, n_heads=[2,2,8], dropout=0,gpu=0, prev_emb=False, top_level_cat=0,
+                 attention_type='scaled',
                  **kwargs):
         """
 
@@ -186,6 +189,7 @@ class SimpleMLPDecoder(nn.Module):
         :param dropout: default 0.1
         :param gpu: gpu id, default 0 (if using CUDA_VISIBLE_DEVICES then no need to use this)
         :param prev_emb: if True use previous embedding
+        :param attention_type: scaled or self
         :param kwargs:
         """
         super(SimpleMLPDecoder, self).__init__()
@@ -194,6 +198,7 @@ class SimpleMLPDecoder(nn.Module):
         self.label_sizes = label_sizes
         self.pad_token = pad_token
         self.embedding_dim = embedding_dim
+        self.mlp_hidden_dim = mlp_hidden_dim
         self.temperature = temperature
         self.label2id = label2id
         self.total_cats = total_cats
@@ -219,8 +224,8 @@ class SimpleMLPDecoder(nn.Module):
         if prev_emb:
             mult_factor = 3
         self.encoder = nn.LSTM(embedding_dim, embedding_dim, bidirectional=True, batch_first=True)
-        self.linear = nn.Linear(embedding_dim * mult_factor, embedding_dim)
-        self.linear2 = nn.Linear(embedding_dim, label_size)
+        self.linear = nn.Linear(embedding_dim * mult_factor, mlp_hidden_dim)
+        self.linear2 = nn.Linear(mlp_hidden_dim, label_size)
         self.relu = nn.ReLU()
         self.dropout = nn.Dropout(dropout)
         #self.linear1 = nn.Linear(embedding_dim + cat_emb_dim, self.label_sizes[0])
@@ -229,9 +234,17 @@ class SimpleMLPDecoder(nn.Module):
         #self.linears = [self.linear1, self.linear2, self.linear3]
         self.taxonomy = taxonomy
         self.max_words = max_words
-        self.attention_1 = DocumentLevelAttention(embedding_dim,d_k,d_v, n_head=n_heads[0], dropout=dropout)
-        self.attention_2 = DocumentLevelAttention(embedding_dim, d_k, d_v, n_head=n_heads[1], dropout=dropout)
-        self.attention_3 = DocumentLevelAttention(embedding_dim, d_k, d_v, n_head=n_heads[2], dropout=dropout)
+        self.attention_type = attention_type
+        if attention_type == 'scaled':
+            self.attention_1 = DocumentLevelAttention(embedding_dim,d_k,d_v, n_head=n_heads[0], dropout=dropout)
+            self.attention_2 = DocumentLevelAttention(embedding_dim, d_k, d_v, n_head=n_heads[1], dropout=dropout)
+            self.attention_3 = DocumentLevelAttention(embedding_dim, d_k, d_v, n_head=n_heads[2], dropout=dropout)
+        elif attention_type == 'self':
+            self.attention_1 = DocumentLevelSelfAttention(embedding_dim,da,n_heads[0],embedding_dim * 2)
+            self.attention_2 = DocumentLevelSelfAttention(embedding_dim,da,n_heads[1],embedding_dim * 2)
+            self.attention_3 = DocumentLevelSelfAttention(embedding_dim,da,n_heads[2],embedding_dim * 2)
+        else:
+            raise NotImplementedError("Attention type not implemented")
         self.attentions = [self.attention_1, self.attention_2, self.attention_3]
 
 
@@ -264,11 +277,11 @@ class SimpleMLPDecoder(nn.Module):
         #output = torch.mean(src_emb,1)
         src_pack = pack_padded_sequence(src_emb, src_lengths, batch_first=True)
         packed_output, (h_t, c_t) = self.encoder(src_pack)
-        output, _ = pad_packed_sequence(packed_output, batch_first=True) # batch x seq x hid
+        output, output_lens = pad_packed_sequence(packed_output, batch_first=True) # batch x seq x hid
 
-        return output
+        return output, output_lens
 
-    def forward(self, encoder_outputs, inp_cat,level=0, prev_emb=None, use_prev_emb=False):
+    def forward(self, encoder_outputs, encoder_lens, inp_cat,level=0, prev_emb=None, use_prev_emb=False):
         """
 
         :param doc_emb:
@@ -278,9 +291,14 @@ class SimpleMLPDecoder(nn.Module):
         """
         cat_emb = self.category_embedding(inp_cat)
         cat_emb = cat_emb.unsqueeze(1)
-        # TODO: add attention mask?
-        doc_emb, attn = self.attentions[level](cat_emb, encoder_outputs, encoder_outputs)
-        doc_emb = doc_emb.squeeze(1)
+        # TODO: add maxpool?
+        if self.attention_type == 'scaled':
+            doc_emb, attn = self.attentions[level](cat_emb, encoder_outputs, encoder_outputs)
+            doc_emb = doc_emb.squeeze(1)
+        elif self.attention_type == 'self':
+            doc_emb, attn = self.attentions[level](encoder_outputs, encoder_lens, cat_emb.size(0))
+        else:
+            raise NotImplementedError("attention type not implemented")
         if use_prev_emb:
             doc_emb = torch.cat((prev_emb, doc_emb), 1)
         x = self.linear(doc_emb)
@@ -309,7 +327,7 @@ class SimpleMLPDecoder(nn.Module):
         #loss_fns = [nn.NLLLoss(), nn.NLLLoss(), nn.NLLLoss()]
         loss = 0
         accs = []
-        encoder_outputs = self.encode(src, src_lengths)
+        encoder_outputs, encoder_lens = self.encode(src, src_lengths)
         hidden_rep = self.init_hidden(src.size(0))
         cat_len = categories.size(1) - 1
         assert cat_len == max_categories
@@ -331,7 +349,7 @@ class SimpleMLPDecoder(nn.Module):
                     print(inp_cat)
                     raise RuntimeError("category ID outside of embedding")
                 # hidden_state = torch.cat((hidden_state, context_state), 2)
-                out, attn, hidden_rep = self.forward(encoder_outputs, inp_cat, i, prev_emb=hidden_rep,
+                out, attn, hidden_rep = self.forward(encoder_outputs, encoder_lens, inp_cat, i, prev_emb=hidden_rep,
                                                      use_prev_emb=self.prev_emb)
                 if renormalize:
                     out = self.mask_renormalize(inp_cat, out)
@@ -380,7 +398,7 @@ class SimpleMLPDecoder(nn.Module):
                     print(out.size())
                     raise RuntimeError("category ID outside of embedding")
                 #inp_cat = categories[:, i]
-                out, attn, hidden_rep = self.forward(encoder_outputs, inp_cat, i, prev_emb=hidden_rep,
+                out, attn, hidden_rep = self.forward(encoder_outputs, encoder_lens, inp_cat, i, prev_emb=hidden_rep,
                                                      use_prev_emb=self.prev_emb)
                 if renormalize:
                     out = self.mask_renormalize(inp_cat, out)
@@ -449,11 +467,17 @@ class SimpleMLPDecoder(nn.Module):
         :return:
         """
         penalty = 0
-        attns = attns.view(batch_size, -1, attns.size(2))
-        n_heads = attns.size(1)
+        if type(attns) != list:
+            attns = attns.view(batch_size, -1, attns.size(2))
+            n_heads = attns.size(1)
+        else:
+            n_heads = attns[0].size(0)
         I = Variable(torch.eye(n_heads)).cuda()
         for i in range(batch_size):
-            A = attns[i,:,:]
+            if type(attns) == list:
+                A = attns[i]
+            else:
+                A = attns[i,:,:]
             AAT = torch.mm(A, A.t())
             P = torch.norm(AAT - I, 2)
             penalty += P * P

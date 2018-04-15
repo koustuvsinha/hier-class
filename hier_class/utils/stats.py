@@ -141,7 +141,9 @@ class Statistics():
                 logging.info("Saving confusion matrix for level {}".format(level))
                 correct_labels = flatten([tr[level] for tr in self.correct_labels])
                 predicted_labels = flatten([tr[level] for tr in self.predicted_labels])
-                conf_matrix = plot_confusion_matrix(correct_labels, predicted_labels, range(0, max(correct_labels)))
+                logging.info("Min predicted label {}".format(min(predicted_labels)))
+                logging.info("Max predicted label {}".format(max(predicted_labels)))
+                conf_matrix = plot_confusion_matrix(correct_labels, predicted_labels, range(1, max(correct_labels) + 1))
                 self.writer.add_image('Confusion_Matrix_Level_{}'.format(level),conf_matrix,self.epoch)
         self.reset()
 
