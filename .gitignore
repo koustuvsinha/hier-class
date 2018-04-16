@@ -113,3 +113,5 @@ ENV/
 logs/
 saved/
 *.csv
+*.mod
+
