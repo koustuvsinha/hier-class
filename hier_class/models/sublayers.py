@@ -4,6 +4,7 @@ import torch.nn.init as init
 from torch.autograd import Variable
 import torch.nn.functional as F
 from hier_class.models.modules import ScaledDotProductAttention, LayerNormalization
+from hier_class.utils import constants as Constants
 import pdb
 
 class DocumentLevelAttention(nn.Module):
@@ -34,7 +35,7 @@ class DocumentLevelAttention(nn.Module):
         init.xavier_normal(self.w_ks)
         init.xavier_normal(self.w_vs)
 
-    def forward(self, q, k, v, encoder_lens=None, attn_mask=None):
+    def forward(self, q, k, v, encoder_lens=None, attn_mask=None, atm=True):
         '''
 
         :param q: query
@@ -64,7 +65,7 @@ class DocumentLevelAttention(nn.Module):
         v_s = torch.bmm(v_s, self.w_vs).view(-1, len_v, d_v)  # (n_head*mb_size) x len_v x d_v
 
         # perform attention, result size = (n_head * mb_size) x len_q x d_v
-        if attn_mask:
+        if atm:
             outputs, attns = self.attention(q_s, k_s, v_s, attn_mask=attn_mask.repeat(n_head, 1, 1))
         else:
             outputs, attns = self.attention(q_s, k_s, v_s, attn_mask=None)
@@ -125,7 +126,5 @@ class DocumentLevelSelfAttention(nn.Module):
 
 def pad(variable, length):
     return torch.cat([variable, variable.new(length - variable.size(0), *variable.size()[1:]).zero_()])
-
-
 
 

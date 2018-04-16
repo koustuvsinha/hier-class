@@ -6,6 +6,7 @@ from torch.autograd import Variable
 from torch.nn.utils.rnn import pack_padded_sequence, pad_packed_sequence
 import random
 from hier_class.models.sublayers import DocumentLevelAttention, DocumentLevelSelfAttention
+from hier_class.utils import constants as Constants
 import numpy as np
 import time
 import pdb
@@ -165,10 +166,14 @@ class SimpleMLPDecoder(nn.Module):
                  mlp_hidden_dim=300,
                  cat_emb_dim=64, label_size=1,
                  label_sizes=[], label2id={},
-                 total_cats=1,pad_token=1,
+                 total_cats=1,pad_token=1, max_categories=1,
                  taxonomy=None,temperature=0.8, max_words=600,
                  d_k=64, d_v=64,da=350, n_heads=[2,2,8], dropout=0,gpu=0, prev_emb=False, top_level_cat=0,
+                 use_attn_mask=False,
                  attention_type='scaled',
+                 embedding=None,
+                 use_embedding=False,
+                 fix_embedding=False,
                  **kwargs):
         """
 
@@ -204,11 +209,17 @@ class SimpleMLPDecoder(nn.Module):
         self.total_cats = total_cats
         self.gpu = gpu
         self.prev_emb = prev_emb
+        self.use_attn_mask = use_attn_mask
         self.embedding = nn.Embedding(
             vocab_size,
             embedding_dim,
             pad_token
         )
+        if use_embedding:
+            print("Setting pretrained embedding")
+            self.embedding.weight.data = embedding
+            if fix_embedding:
+                self.embedding.requires_grad = False
         # for attention to work, embedding_dim and category embedding dim should be the same
         if (embedding_dim * 2) != cat_emb_dim:
             print(embedding_dim)
@@ -236,16 +247,18 @@ class SimpleMLPDecoder(nn.Module):
         self.max_words = max_words
         self.attention_type = attention_type
         if attention_type == 'scaled':
-            self.attention_1 = DocumentLevelAttention(embedding_dim,d_k,d_v, n_head=n_heads[0], dropout=dropout)
-            self.attention_2 = DocumentLevelAttention(embedding_dim, d_k, d_v, n_head=n_heads[1], dropout=dropout)
-            self.attention_3 = DocumentLevelAttention(embedding_dim, d_k, d_v, n_head=n_heads[2], dropout=dropout)
+            for i in range(max_categories):
+                setattr(self, 'attention_{}'.format(i+1),
+                        DocumentLevelAttention(embedding_dim,d_k,d_v, n_head=n_heads[i],
+                                                      dropout=dropout))
+            self.attentions = [getattr(self, 'attention_{}'.format(i+1)) for i in range(max_categories)]
         elif attention_type == 'self':
-            self.attention_1 = DocumentLevelSelfAttention(embedding_dim,da,n_heads[0],embedding_dim * 2)
-            self.attention_2 = DocumentLevelSelfAttention(embedding_dim,da,n_heads[1],embedding_dim * 2)
-            self.attention_3 = DocumentLevelSelfAttention(embedding_dim,da,n_heads[2],embedding_dim * 2)
+            for i in range(max_categories):
+                setattr(self, 'attention_{}'.format(i+1),
+                        DocumentLevelSelfAttention(embedding_dim,da,n_heads[i],embedding_dim * 2))
+            self.attentions = [getattr(self,'attention_{}'.format(i + 1)) for i in range(max_categories)]
         else:
-            raise NotImplementedError("Attention type not implemented")
-        self.attentions = [self.attention_1, self.attention_2, self.attention_3]
+            return
 
 
 
@@ -281,7 +294,7 @@ class SimpleMLPDecoder(nn.Module):
 
         return output, output_lens
 
-    def forward(self, encoder_outputs, encoder_lens, inp_cat,level=0, prev_emb=None, use_prev_emb=False):
+    def forward(self, encoder_outputs, encoder_lens, inp_cat,level=0, prev_emb=None, use_prev_emb=False, attn_mask=False):
         """
 
         :param doc_emb:
@@ -290,13 +303,18 @@ class SimpleMLPDecoder(nn.Module):
         :return:
         """
         cat_emb = self.category_embedding(inp_cat)
-        cat_emb = cat_emb.unsqueeze(1)
+        #cat_emb = cat_emb.unsqueeze(1)
         # TODO: add maxpool?
         if self.attention_type == 'scaled':
-            doc_emb, attn = self.attentions[level](cat_emb, encoder_outputs, encoder_outputs)
+            doc_emb, attn = self.attentions[level](cat_emb, encoder_outputs, encoder_outputs,
+                                                   attn_mask=attn_mask, atm=self.use_attn_mask)
             doc_emb = doc_emb.squeeze(1)
         elif self.attention_type == 'self':
             doc_emb, attn = self.attentions[level](encoder_outputs, encoder_lens, cat_emb.size(0))
+        elif self.attention_type == 'no_attention':
+            # Maxpool
+            doc_emb = torch.max(encoder_outputs, 1)[0]
+            attn = None
         else:
             raise NotImplementedError("attention type not implemented")
         if use_prev_emb:
@@ -349,8 +367,10 @@ class SimpleMLPDecoder(nn.Module):
                     print(inp_cat)
                     raise RuntimeError("category ID outside of embedding")
                 # hidden_state = torch.cat((hidden_state, context_state), 2)
+                inp_cat = inp_cat.unsqueeze(1)
+                attn_mask = get_attn_padding_mask(inp_cat, src)
                 out, attn, hidden_rep = self.forward(encoder_outputs, encoder_lens, inp_cat, i, prev_emb=hidden_rep,
-                                                     use_prev_emb=self.prev_emb)
+                                                     use_prev_emb=self.prev_emb,attn_mask=attn_mask)
                 if renormalize:
                     out = self.mask_renormalize(inp_cat, out)
                 target_cat = categories[:, i+1]
@@ -398,8 +418,10 @@ class SimpleMLPDecoder(nn.Module):
                     print(out.size())
                     raise RuntimeError("category ID outside of embedding")
                 #inp_cat = categories[:, i]
+                inp_cat = inp_cat.unsqueeze(1)
+                attn_mask = get_attn_padding_mask(inp_cat, src)
                 out, attn, hidden_rep = self.forward(encoder_outputs, encoder_lens, inp_cat, i, prev_emb=hidden_rep,
-                                                     use_prev_emb=self.prev_emb)
+                                                     use_prev_emb=self.prev_emb,attn_mask=attn_mask)
                 if renormalize:
                     out = self.mask_renormalize(inp_cat, out)
                 target_cat = categories[:, i + 1]
@@ -467,11 +489,13 @@ class SimpleMLPDecoder(nn.Module):
         :return:
         """
         penalty = 0
-        if type(attns) != list:
+        if type(attns) == Variable:
             attns = attns.view(batch_size, -1, attns.size(2))
             n_heads = attns.size(1)
-        else:
+        elif type(attns) == list:
             n_heads = attns[0].size(0)
+        else:
+            return 0
         I = Variable(torch.eye(n_heads)).cuda()
         for i in range(batch_size):
             if type(attns) == list:
@@ -489,6 +513,17 @@ class SimpleMLPDecoder(nn.Module):
     def label2category(self, label, level):
         return self.label2id['l{}_{}'.format(label, level)]
 
+
+def get_attn_padding_mask(seq_q, seq_k):
+    ''' Indicate the padding-related part to mask '''
+    #print(seq_q.size())
+    #print(seq_k.size())
+    assert seq_q.dim() == 2 and seq_k.dim() == 2
+    mb_size, len_q = seq_q.size()
+    mb_size, len_k = seq_k.size()
+    pad_attn_mask = seq_k.data.eq(0).unsqueeze(1)   # bx1xsk
+    pad_attn_mask = pad_attn_mask.expand(mb_size, len_q, len_k) # bxsqxsk
+    return pad_attn_mask
 
 
 
