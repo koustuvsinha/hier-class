@@ -41,7 +41,7 @@ def exp_config():
     use_embedding = False
     fix_embeddings = False
     embedding_file = '/home/ml/ksinha4/word_vectors/glove/glove.840B.300d.txt'
-    embedding_saved = 'wos_embeddings.mod'
+    embedding_saved = 'glove_embeddings.mod'
     load_model = False
     load_model_path = ''
     save_name = 'model_epoch_{}_step_{}.mod'
@@ -51,6 +51,7 @@ def exp_config():
     lr_threshold = 1e-4
     lr_patience = 5
     clip_grad = 0.5
+    momentum = 0.9
     dropout = 0.2
     log_interval = 200
     save_interval = 1000
@@ -78,14 +79,16 @@ def exp_config():
     max_word_doc = -1
     decoder_ready = True
     prev_emb = True
-    n_heads = [8,8,8]
+    n_heads = [2,2,8]
     baseline = False # either False, or fast / bilstm
     debug = False
     attn_penalty_coeff = 1
-    d_k = 32
-    d_v = 32
-    seed = 111
+    d_k = 64
+    d_v = 64
+    da = 350
+    seed = 1111
     attention_type = 'self'
+    use_attn_mask = False # use attention mask
 
 
 @ex.automain
@@ -132,14 +135,21 @@ def train(_config, _run):
             raise RuntimeError("config['level'] cannot be more than config['levels']")
         logging.info("Choosing only {} level to classify".format(_config['level']))
         label_size = cat_per_level[_config['level']] + 1
+    embedding = None
+    if _config['use_embedding']:
+        logging.info("Creating / loading word embeddings")
+        embedding = data.load_embedding(_config['embedding_file'],
+                                        _config['embedding_saved'], data_path=_config['data_path'])
     model_params.update({
         'vocab_size': len(data.word2id),
         'label_size': label_size,
+        'embedding': embedding,
         'pad_token': data.word2id[CONSTANTS.PAD_WORD],
         'total_cats': sum(cat_per_level) + 1,
         'taxonomy': data.taxonomy,
         'label_sizes':cat_per_level,
         'label2id': data.label2id,
+        'max_categories': max_categories,
         'gpu':_config['gpu']
     })
 
@@ -196,7 +206,8 @@ def train(_config, _run):
     elif optimizer == 'rmsprop':
         optimizer = optim.RMSprop(m_params, lr=_config['lr'], weight_decay=_config['weight_decay'])
     elif optimizer == 'sgd':
-        optimizer = optim.SGD(m_params, lr=_config['lr'], weight_decay=_config['weight_decay'])
+        optimizer = optim.SGD(m_params, lr=_config['lr'], momentum=_config['momentum'],
+                              weight_decay=_config['weight_decay'])
     else:
         raise NotImplementedError()
     if use_gpu:
@@ -230,17 +241,18 @@ def train(_config, _run):
                                                   batch_size=batch_size,
                                                   shuffle=True,
                                                   collate_fn=data_utils.collate_fn,
-                                                  num_workers=8)
+                                                  num_workers=4)
         train_data_iter = iter(train_data_loader)
 
         test_data_loader = torch.utils.data.DataLoader(dataset=test_data,
                                                   batch_size=batch_size,
                                                   shuffle=True,
                                                   collate_fn=data_utils.collate_fn,
-                                                  num_workers=8)
+                                                  num_workers=4)
         test_data_iter = iter(test_data_loader)
         logging.info("Got data")
         model.train()
+        loss = None
         for src_data, src_lengths, src_labels, src_index in train_data_iter:
             labels = Variable(torch.LongTensor(src_labels))
             #cat_labels = Variable(torch.LongTensor(cat_labels))
@@ -284,7 +296,7 @@ def train(_config, _run):
                                             max_categories=max_categories,
                                             target_level=1,
                                             attn_penalty_coeff=_config['attn_penalty_coeff'])
-            stats.update_validation(loss.data[0],accs, attn=attns, src=src_index, preds=preds, correct=correct,
+            stats.update_validation(loss.data[0],accs, attn=attns, src=src_data, preds=preds, correct=correct,
                                     correct_confs=correct_confs, incorrect_confs=incorrect_confs)
         stats.log_loss()
         lr_scheduler.step(stats.get_valid_acc(0))
