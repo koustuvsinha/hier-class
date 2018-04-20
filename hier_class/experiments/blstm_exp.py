@@ -53,6 +53,8 @@ def exp_config():
     epochs = 40
     level = 2
     cat_emb_dim = 64
+    max_vocab = 100000
+    max_word_doc = 600
 
 @ex.automain
 def train(_config, _run):
@@ -63,7 +65,9 @@ def train(_config, _run):
     data = data_utils.Data_Utility(
         exp_name=_config['exp_name'],
         train_test_split=_config['train_test_split'],
-        decoder_ready=True
+        decoder_ready=True,
+        max_vocab=_config['max_vocab'],
+        max_word_doc=_config['max_word_doc']
     )
     logging.info("Loading data")
     data.load(_config['data_type'],_config['data_loc'],_config['tokenization'])

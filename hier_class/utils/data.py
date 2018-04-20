@@ -5,6 +5,7 @@
 import torch
 import torch.utils.data as data
 from torch.autograd import Variable
+from collections import Counter
 import os
 from os.path import dirname, abspath
 from tqdm import tqdm
@@ -21,7 +22,8 @@ logging.basicConfig(
 )
 
 class Data_Utility(data.Dataset):
-    def __init__(self, exp_name='', train_test_split=0.8, decoder_ready=False):
+    def __init__(self, exp_name='', train_test_split=0.8,
+                 decoder_ready=False, max_vocab=-1, max_word_doc=-1):
         """
 
         :param exp_name:
@@ -34,9 +36,11 @@ class Data_Utility(data.Dataset):
         self.train_indices = []
         self.test_indices = []
         self.split_ratio = train_test_split
-        self.special_tokens = [constants.PAD_WORD]
+        self.special_tokens = [constants.PAD_WORD, constants.UNK_WORD]
         self.data_mode = 'train'
         self.decoder_ready = decoder_ready
+        self.max_vocab = max_vocab
+        self.max_word_doc = max_word_doc
         parent_dir = dirname(dirname(dirname(abspath(__file__))))
         self.save_path_base = parent_dir + '/saved/' + exp_name
         if not os.path.exists(self.save_path_base):
@@ -54,7 +58,7 @@ class Data_Utility(data.Dataset):
         ## Unified data format - should have two json files, one for data and other for ids / dictionaries
         data_m = {}
         dict_m = {}
-        items = set()
+        items = Counter()  # set()
         y_classes = []
         text_data = []
 
@@ -101,6 +105,13 @@ class Data_Utility(data.Dataset):
                 l_3 = gen_class_id(row, 'l3')
                 y_classes.append([l_1,l_2,l_3])
                 text = row['text']
+
+                # cut the max tokens in the doc
+                old_text = self.tokenize(str(text), mode=tokenization)
+                if self.max_word_doc > 0 and len(old_text) > self.max_word_doc:
+                   text = " ".join(old_text[:self.max_word_doc])
+
+
                 if '<sent>' in text:
                     # data has been sentence tokenized
                     text = text.split('<sent>')
@@ -180,6 +191,12 @@ class Data_Utility(data.Dataset):
         """
         count = 0
         word2id = {}
+        ## if max_vocab is not -1, then shrink the word size
+        if self.max_vocab >= 0:
+            words = [tup[0] for tup in words.most_common(self.max_vocab)]
+        else:
+            words = list(words.keys())
+
         if special_tokens:
             for tok in special_tokens:
                 word2id[tok] = count
@@ -307,7 +324,31 @@ class Data_Utility(data.Dataset):
         else:
             rows = self.test_indices
         data = self.data[rows[index]]
+<<<<<<< Updated upstream
         data = [self.word2id[word] for word in data]
+=======
+
+
+        # data = [self.word2id[word] for word in data]
+        #labels = self.labels[rows[index]]
+
+        if type(data[0]) != list:
+            data = [[self.word2id[word] if word in self.word2id
+                else self.word2id[constants.UNK_WORD]
+                for word in data]]
+        else:
+            num_sent = len(data)
+            sents_len = [len(sent) for sent in data]
+            max_sent_len = max(sents_len)
+            matrix = np.zeros((num_sent, max_sent_len))
+
+            for i, sent in enumerate(data):
+                matrix[i][:sents_len[i]] = [self.word2id[word] if word in self.word2id
+                                            else self.word2id[constants.UNK_WORD]
+                                            for word in sent]
+            # data = [self.word2id[word] for sent in data for word in sent]
+            data = matrix
+>>>>>>> Stashed changes
         labels = self.labels[rows[index]]
         if self.decoder_ready:
             labels = self.decoder_labels[rows[index]]
