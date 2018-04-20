@@ -227,8 +227,7 @@ class SimpleMLPDecoder(nn.Module):
             raise RuntimeError("for attention to work, embedding_dim and category embedding dim should be the same or double for bidirectional")
         self.category_embedding = nn.Embedding(
             total_cats,
-            cat_emb_dim,
-            top_level_cat
+            cat_emb_dim
         )
         # if prev_emb is True, then to use previous embedding make the mult factor = 3
         mult_factor = 2
@@ -265,6 +264,7 @@ class SimpleMLPDecoder(nn.Module):
     def init_weights(self):
         initrange = 0.1
         self.embedding.weight.data.uniform(-initrange, initrange)
+        self.category_embedding.weight.data.uniform(-initrange, initrange)
         nn.init.xavier_normal(
             self.decoder2linear.weight,
             gain=nn.init.calculate_gain('tanh')
@@ -303,11 +303,10 @@ class SimpleMLPDecoder(nn.Module):
         :return:
         """
         cat_emb = self.category_embedding(inp_cat)
-        #cat_emb = cat_emb.unsqueeze(1)
-        # TODO: add maxpool?
+        cat_emb = cat_emb.unsqueeze(1)
         if self.attention_type == 'scaled':
             doc_emb, attn = self.attentions[level](cat_emb, encoder_outputs, encoder_outputs,
-                                                   attn_mask=attn_mask, atm=self.use_attn_mask)
+                                                   attn_mask=None, atm=None)
             doc_emb = doc_emb.squeeze(1)
         elif self.attention_type == 'self':
             doc_emb, attn = self.attentions[level](encoder_outputs, encoder_lens, cat_emb.size(0))
@@ -341,7 +340,10 @@ class SimpleMLPDecoder(nn.Module):
         :param tf_ratio: teacher forcing ratio
         :return:
         """
-        loss_fn = nn.NLLLoss(weight=loss_weights)
+        if type(loss_weights) == torch.FloatTensor:
+            loss_fn = nn.NLLLoss(weight=loss_weights)
+        else:
+            loss_fn = nn.NLLLoss()
         #loss_fns = [nn.NLLLoss(), nn.NLLLoss(), nn.NLLLoss()]
         loss = 0
         accs = []
@@ -367,14 +369,14 @@ class SimpleMLPDecoder(nn.Module):
                     print(inp_cat)
                     raise RuntimeError("category ID outside of embedding")
                 # hidden_state = torch.cat((hidden_state, context_state), 2)
-                inp_cat = inp_cat.unsqueeze(1)
-                attn_mask = get_attn_padding_mask(inp_cat, src)
+                #inp_cat = inp_cat.unsqueeze(1)
+                attn_mask = None #get_attn_padding_mask(inp_cat, src)
                 out, attn, hidden_rep = self.forward(encoder_outputs, encoder_lens, inp_cat, i, prev_emb=hidden_rep,
                                                      use_prev_emb=self.prev_emb,attn_mask=attn_mask)
                 if renormalize:
                     out = self.mask_renormalize(inp_cat, out)
                 target_cat = categories[:, i+1]
-                attn_penalty = self.calculate_attention_penalty(attn, batch_size=inp_cat.size(0))
+                attn_penalty = 0 #self.calculate_attention_penalty(attn, batch_size=inp_cat.size(0))
                 loss += loss_fn(out, target_cat) * loss_focus[i] + attn_penalty_coeff * attn_penalty
                 #out = self.mask_renormalize(inp_cat, out)
                 pred_logits, out_pred = torch.max(out.data, 1)
@@ -418,8 +420,8 @@ class SimpleMLPDecoder(nn.Module):
                     print(out.size())
                     raise RuntimeError("category ID outside of embedding")
                 #inp_cat = categories[:, i]
-                inp_cat = inp_cat.unsqueeze(1)
-                attn_mask = get_attn_padding_mask(inp_cat, src)
+                #inp_cat = inp_cat.unsqueeze(1)
+                attn_mask = None #get_attn_padding_mask(inp_cat, src)
                 out, attn, hidden_rep = self.forward(encoder_outputs, encoder_lens, inp_cat, i, prev_emb=hidden_rep,
                                                      use_prev_emb=self.prev_emb,attn_mask=attn_mask)
                 if renormalize:
@@ -428,7 +430,7 @@ class SimpleMLPDecoder(nn.Module):
                 if batch_masking:
                     target_cat = target_cat * Variable(batch_mask)
                     out = (out.transpose(0,1) * Variable(batch_mask.float())).transpose(0,1)
-                attn_penalty = self.calculate_attention_penalty(attn, batch_size=inp_cat.size(0))
+                attn_penalty = 0 #self.calculate_attention_penalty(attn, batch_size=inp_cat.size(0))
                 loss += loss_fn(out, target_cat) * loss_focus[i] + attn_penalty_coeff * attn_penalty
                 #out = self.mask_renormalize(inp_cat, out)
                 pred_logits, out_pred = torch.max(out.data, 1)

@@ -46,8 +46,8 @@ def exp_config():
     load_model_path = ''
     save_name = 'model_epoch_{}_step_{}.mod'
     optimizer = 'adam'
-    lr = 5e-4
-    lr_factor = 0.4
+    lr = 1e-3
+    lr_factor = 0.1
     lr_threshold = 1e-4
     lr_patience = 5
     clip_grad = 0.5
@@ -177,8 +177,8 @@ def train(_config, _run):
     if _config['baseline']:
         assert _config['level'] != -1
         label_weights = data.calculate_weights(_config['level'])
-        logging.info("Label weights")
-        logging.info(label_weights)
+        #logging.info("Label weights")
+        #logging.info(label_weights)
         label_weights = torch.FloatTensor(label_weights)
         label_weights = label_weights.cuda(gpu)
         if _config['baseline'] == 'fast':
@@ -191,8 +191,8 @@ def train(_config, _run):
         label_weights = [1.0]
         for i in range(_config['levels']):
             label_weights.extend(data.calculate_weights(i+1))
-        logging.info("Label weights")
-        logging.info(label_weights)
+        #logging.info("Label weights")
+        #logging.info(label_weights)
         label_weights = torch.FloatTensor(label_weights)
         label_weights = label_weights.cuda(gpu)
         model = decoders.SimpleMLPDecoder(**model_params)
@@ -270,8 +270,8 @@ def train(_config, _run):
                                             target_level=1,
                                             attn_penalty_coeff=_config['attn_penalty_coeff'])
             loss.backward()
-            m_params = [p for p in model.parameters() if p.requires_grad]
-            nn.utils.clip_grad_norm(m_params, _config['clip_grad'])
+            #m_params = [p for p in model.parameters() if p.requires_grad]
+            #nn.utils.clip_grad_norm(m_params, _config['clip_grad'])
             optimizer.step()
             stats.update_train(loss.data[0], accs)
             if _config['debug']:

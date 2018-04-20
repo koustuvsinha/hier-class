@@ -62,6 +62,7 @@ class Data_Utility(data.Dataset):
         items = Counter() #set()
         y_classes = []
         text_data = []
+        data_indexes = []
 
         if data_type == 'WOS':
             ## Web of science data
@@ -88,7 +89,8 @@ class Data_Utility(data.Dataset):
             for i in range(len(y_1)):
                 y_classes.append([y_1[i],y_2[i],y_3[i]])
         elif data_type == 'WIKI':
-            df = pandas.read_csv(data_loc + '/' + file_name)
+            full_data_csv_path = data_loc + '/' + file_name
+            df = pandas.read_csv(full_data_csv_path)
             y_class2id = {'l1':{},'l2':{},'l3':{}}
             ct_dict = {'l1':0,'l2':0,'l3':0}
 
@@ -118,13 +120,16 @@ class Data_Utility(data.Dataset):
                 text_data.append(text)
                 items.update(text)
                 y_classes.append([l_1, l_2, l_3])
+                data_indexes.append(i)
 
             data_m['y_class2id'] = y_class2id
             dict_m['word2id'], dict_m['id2word'] = self.assign_wordids(items, self.special_tokens)
+            data_m['data_path'] = full_data_csv_path
 
         assert len(y_classes) == len(text_data)
         data_m['data'] = text_data
         data_m['labels'] = y_classes
+        data_m['indexes'] = data_indexes
 
 
         ## create dynamic dictionary
@@ -219,6 +224,11 @@ class Data_Utility(data.Dataset):
         self.data = processed_dict['data_m']['data']
         self.labels = processed_dict['data_m']['labels']
         self.label_meta = processed_dict['dict_m']['label_meta']
+        self.data_indexes = processed_dict['data_m']['indexes']
+        self.data_path = processed_dict['data_m']['data_path']
+        self.y_class2id = processed_dict['data_m']['y_class2id']
+        self.y_id2class = {cl:{v:k for k,v in dt.items()} for cl,dt in self.y_class2id.items()}
+        #self.y_id2class = {v:k for k,v in self.y_class2id.items()} not possible as its a two level class
         # fix the labels. during data collection, the labels where taken as unique id per level.
         # to make all levels unique here for the decoder to work, we need to make them sequential
         label2id = {}
@@ -259,13 +269,14 @@ class Data_Utility(data.Dataset):
     def split_indices(self):
         ## TODO: evenly split training and test so that test has atleast n examples of the categories
         end_labels = [labels[-1] for labels in self.labels]
+        assert len(end_labels) == len(self.data_indexes)
         #print(len(end_labels))
         #print(len(set(end_labels)))
         label2rowid = {}
         for i,label in enumerate(end_labels):
             if label not in label2rowid:
                 label2rowid[label] = []
-            label2rowid[label].append(i)
+            label2rowid[label].append(self.data_indexes[i])
         # shuffle within labelids
         for i,label in enumerate(end_labels):
             label2rowid[label] = random.sample(label2rowid[label], len(label2rowid[label]))
