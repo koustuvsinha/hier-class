@@ -46,7 +46,8 @@ class Data_Utility(data.Dataset):
         if not os.path.exists(self.save_path_base):
             os.makedirs(self.save_path_base)
 
-    def preprocess(self, data_type='', data_loc='', file_name='full_docs_2.csv', tokenization='word'):
+    def preprocess(
+            self, data_type='', data_loc='', file_name='full_docs_2.csv', tokenization='word'):
         """
         Given data type and location, load and preprocess in an uniform format
         Also create dynamic dictionaries here
@@ -182,7 +183,7 @@ class Data_Utility(data.Dataset):
         if mode == 'char':
             return sent.split()
 
-    def assign_wordids(self, words, special_tokens=None):
+    def assign_wordids(self, words, special_tokens={"<pad>", "<unk>"}):
         """
         Given a set of words, create word2id and id2word
         :param words: set of words
@@ -324,10 +325,8 @@ class Data_Utility(data.Dataset):
         else:
             rows = self.test_indices
         data = self.data[rows[index]]
-<<<<<<< Updated upstream
-        data = [self.word2id[word] for word in data]
-=======
 
+        data = [self.word2id[word] for word in data]
 
         # data = [self.word2id[word] for word in data]
         #labels = self.labels[rows[index]]
@@ -348,7 +347,7 @@ class Data_Utility(data.Dataset):
                                             for word in sent]
             # data = [self.word2id[word] for sent in data for word in sent]
             data = matrix
->>>>>>> Stashed changes
+
         labels = self.labels[rows[index]]
         if self.decoder_ready:
             labels = self.decoder_labels[rows[index]]
