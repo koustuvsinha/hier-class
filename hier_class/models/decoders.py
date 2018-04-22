@@ -322,14 +322,14 @@ class SimpleMLPDecoder(nn.Module):
         hidden_rep = self.dropout(x)
         x = self.relu(hidden_rep)
         x = self.linear2(x)
-        x = self.dropout(x)
+        logits = self.dropout(x)
         #x = self.linears[level](x)
-        logits = self.temp_logsoftmax(x, self.temperature)
+        #logits = self.temp_logsoftmax(x, self.temperature)
 
         return logits, attn, hidden_rep
 
     def batchNLLLoss(self, src, src_lengths, categories, tf_ratio=1.0, loss_focus=[],
-                     loss_weights=None, renormalize=False, max_categories=3, batch_masking=False,
+                     loss_weights=None, renormalize=True, max_categories=3, batch_masking=False,
                      confidence_threshold=0.8, attn_penalty_coeff=0,
                      target_level=-1):
         """
@@ -374,7 +374,8 @@ class SimpleMLPDecoder(nn.Module):
                 out, attn, hidden_rep = self.forward(encoder_outputs, encoder_lens, inp_cat, i, prev_emb=hidden_rep,
                                                      use_prev_emb=self.prev_emb,attn_mask=attn_mask)
                 if renormalize:
-                    out = self.mask_renormalize(inp_cat, out)
+                    out = self.mask_renormalize(out,i)
+                out = self.temp_logsoftmax(out, self.temperature)
                 target_cat = categories[:, i+1]
                 attn_penalty = 0 #self.calculate_attention_penalty(attn, batch_size=inp_cat.size(0))
                 loss += loss_fn(out, target_cat) * loss_focus[i] + attn_penalty_coeff * attn_penalty
@@ -425,7 +426,8 @@ class SimpleMLPDecoder(nn.Module):
                 out, attn, hidden_rep = self.forward(encoder_outputs, encoder_lens, inp_cat, i, prev_emb=hidden_rep,
                                                      use_prev_emb=self.prev_emb,attn_mask=attn_mask)
                 if renormalize:
-                    out = self.mask_renormalize(inp_cat, out)
+                    out = self.mask_renormalize(out,i)
+                out = self.temp_logsoftmax(out, self.temperature)
                 target_cat = categories[:, i + 1]
                 if batch_masking:
                     target_cat = target_cat * Variable(batch_mask)
@@ -466,22 +468,26 @@ class SimpleMLPDecoder(nn.Module):
 
         return loss, accs, attns, predictions, correct_labels, correct_confs, incorrect_confs
 
-    def mask_renormalize(self, parent_class_batch, logits):
+    def mask_renormalize(self, logits, level=0):
         """
         Given a parent class, logits and taxonomy, mask the classes which are not in child
         :param parent_class_batch: parent class ID in batch, batch x 1
         :param logits: batch x classes
         :return:
         """
-        mask = torch.ones(logits.size())
-        parent_class_batch = parent_class_batch.data.cpu().numpy()
-        for batch_id, parent_class in enumerate(parent_class_batch):
-            if parent_class in self.taxonomy:
-                child_classes = self.taxonomy[parent_class]
-                for cc in child_classes:
-                    mask[batch_id][cc] = 0
-        mask = mask.byte().cuda(self.gpu)
-        logits.masked_fill_(mask, -float('inf'))
+        mask = [1]*(sum(self.label_sizes) + 1) # 912
+        label_indices = {}
+        ct = 1
+        for lv,lbs in enumerate(self.label_sizes):
+            label_indices[lv] = []
+            for lb in range(lbs):
+                label_indices[lv].append(ct)
+                ct +=1
+        for indc in label_indices[level]:
+            mask[indc] = 0
+        #print(mask)
+        mask = torch.ByteTensor(mask).cuda()
+        logits.data.masked_fill_(mask, -float('inf'))
         return logits
 
     def calculate_attention_penalty(self, attns, batch_size):
