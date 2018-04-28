@@ -24,6 +24,7 @@ parser.add_argument("-m","--model", type=str, help="model to load", default="mod
 parser.add_argument("-f","--file", type=str, help="testing file to load", default="full_docs_2_test.csv")
 parser.add_argument("-o","--output", type=str, help="file to write the output", default="output.csv")
 parser.add_argument("-c","--confidence", type=float, help="confidence to measure pruned accuracy", default=0.0)
+parser.add_argument("-n","--num", type=int, help="number of evals (-1 for all)", default=-1)
 
 args = parser.parse_args()
 
@@ -32,6 +33,9 @@ if __name__ == '__main__':
     logging.info("Loading the model")
     model_params = json.load(open('../../saved/'+args.exp + '/parameters.json','r'))
     model = decoders.SimpleMLPDecoder(**model_params)
+    # TODO: load model!!!!!!!!!!
+    model.load_state_dict(torch.load('../../saved/'+args.exp + '/' + args.model))
+    logging.info("Loaded model")
     if model_params['use_gpu']:
         model = model.cuda()
     ## prepare the data
@@ -45,10 +49,19 @@ if __name__ == '__main__':
         decoder_ready=model_params['decoder_ready']
     )
     data.load(model_params['data_type'], model_params['data_loc'], model_params['file_name'], model_params['tokenization'])
+    model.taxonomy = data.taxonomy
     test_file = pd.read_csv('../../data/' + args.file)
     test_docs = []
     logging.info("Starting prediction ...")
-    pb = tqdm(total=len(test_file))
+    total = args.num
+    if total == -1:
+        total = len(test_file)
+
+    ## TODO: calculate decoder labels
+
+    pb = tqdm(total=total)
+    #pdb.set_trace()
+    ct = 0
     for i,row in test_file.iterrows():
         text = row['text']
         text = text.lower()
@@ -72,7 +85,8 @@ if __name__ == '__main__':
             loss_weights=None,
             max_categories=3,
             target_level=1,
-            attn_penalty_coeff=model_params['attn_penalty_coeff'])
+            attn_penalty_coeff=model_params['attn_penalty_coeff'],
+            renormalize=model_params['renormalize'])
         #print(preds)
         #print(correct_confs)
         #print(incorrect_confs)
@@ -80,6 +94,10 @@ if __name__ == '__main__':
         for idx, pred in enumerate(preds):
             test_file.set_value(i,'pred_{}'.format(idx), pred)
         pb.update(1)
+        ct +=1
+        if ct == total:
+            break
+
     pb.close()
 
     logging.info("Done predicting. Saving file.")
