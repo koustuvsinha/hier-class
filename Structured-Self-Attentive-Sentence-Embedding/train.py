@@ -13,26 +13,29 @@ import json
 import time
 import random
 import os
+import numpy as np
 
 
 def Frobenius(mat):
     size = mat.size()
     if len(size) == 3:  # batched matrix
-        ret = (torch.sum(torch.sum((mat ** 2), 1), 2).squeeze() + 1e-10) ** 0.5
+        ret = (torch.sum(torch.sum((mat ** 2), 1,keepdim=True), 2, keepdim=True).squeeze() + 1e-10) ** 0.5
+        new_ret=torch.sum(ret)
         return torch.sum(ret) / size[0]
     else:
         raise Exception('matrix for computing Frobenius norm should be with 3 dims')
 
 
 def package(data, require_grad=False):
+    print(data)
     """Package data for training / evaluation."""
     # data = map(lambda x: json.loads(x), data)
-    dat = map(lambda x: map(lambda y: dictionary.word2idx[y] if\
-                y in dictionary.keys() else dictionary.word2idx['<unk>'], x['text']), data)
+    dat = list(map(lambda x: list(map(lambda y: dictionary.word2idx[y] if\
+                y in dictionary.word2idx.keys() else dictionary.word2idx['<unk>'], x)), data['text']))
     maxlen = 0
     for item in dat:
         maxlen = max(maxlen, len(item))
-    targets = map(lambda x: x['label'], data)
+    targets = np.array(data['label'])
     maxlen = min(maxlen, 500)
     for i in range(len(data)):
         if maxlen < len(dat[i]):
@@ -41,7 +44,7 @@ def package(data, require_grad=False):
             for j in range(maxlen - len(dat[i])):
                 dat[i].append(dictionary.word2idx['<pad>'])
     dat = Variable(torch.LongTensor(dat), require_grad)
-    targets = Variable(torch.LongTensor(targets), require_grad)
+    targets = Variable(torch.from_numpy(targets), require_grad)
     return dat.t(), targets
 
 
@@ -71,7 +74,7 @@ def train(epoch_number):
     total_pure_loss = 0  # without the penalization term
     start_time = time.time()
     for batch, i in enumerate(range(0, len(data_train), args.batch_size)):
-        data, targets = package(data_train[i:i + args.batch_size], require_grad)
+        data, targets = package(data_train[i:i + args.batch_size], False)
         if args.cuda:
             data = data.cuda()
             targets = targets.cuda()
@@ -80,7 +83,7 @@ def train(epoch_number):
         loss = criterion(output.view(data.size(1), -1), targets)
         total_pure_loss += loss.data
 
-        if attention:  # add penalization term
+        if attention.data is not None:  # add penalization term
             attentionT = torch.transpose(attention, 1, 2).contiguous()
             extra_loss = Frobenius(torch.bmm(attention, attentionT) - I[:attention.size(0)])
             loss += args.penalization_coeff * extra_loss

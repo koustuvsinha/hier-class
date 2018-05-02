@@ -66,8 +66,9 @@ class Data_Utility(data.Dataset):
         # create dictionary
         assert len(df_texts) == len(df['l3']) # l3 is the end level label
         print("finished tokenizing %d data instances"%len(df['l3']))
-        df = pandas.concat([df_texts,df['l3']],axis=1)
-        df.columns = ['text', 'label']
+
+        df = pandas.DataFrame(list(zip(df_texts, list(df['l3']))))
+        df.columns=['text', 'label']
         # return df_texts, df['l3']
         return df
 
@@ -99,13 +100,13 @@ class Data_Utility(data.Dataset):
         for w in df_y:
             if w not in self.cat2id.keys():
                 self.add_to_cat2id(w)
-        y_in_id = [self.cat2id[w] for w in df_y]
+        y_in_id = [int(self.cat2id[w]) for w in df_y]
         assert max(y_in_id) < len(self.cat2id)
         return y_in_id
 
 
     def assign_word_ids(self, df_texts,
-                        special_tokens={"<pad>", "<unk>","<sos>","<eos>"},
+                        special_tokens=["<pad>", "<unk>","<sos>","<eos>"],
                         vocab_size=-1):
         """
         Given df_texts (list of sent tokens), create word2id and id2word
@@ -117,27 +118,27 @@ class Data_Utility(data.Dataset):
         """
         id = 0
         word2id = {}
+        # add special tokens in w2i
+        for tok in special_tokens:
+            word2id[tok] = id
+            id += 1
+            print(tok,word2id[tok])
 
         word_set = [element for text in df_texts for element in text]
         c = Counter(word_set)
 
         ## if max_vocab is not -1, then shrink the word size
         if vocab_size >= 0:
-            words = [tup[0] for tup in c.most_common(vocab_size-len(special_tokens))]
+            words = [tup[0] for tup in c.most_common(vocab_size - len(special_tokens))]
         else:
             words = list(c.keys())
 
-        # add special tokens in w2i
-        if special_tokens:
-            for tok in special_tokens:
-                word2id[tok] = id
-                id += 1
         # add regular words in
         for word in words:
             word2id[word] = id
-            id +=1
-        id2word = {v:k for k,v in word2id.items()}
-        print('finishing processing %d vocabs'%len(word2id))
+            id += 1
+        id2word = {v: k for k, v in word2id.items()}
+        print('finishing processing %d vocabs' % len(word2id))
         return word2id, id2word
 
     def transfer_word_to_id(self, df_texts, w2i):

@@ -50,8 +50,11 @@ def load_data_set(vocab_size):
           % (len(x_train), len(x_val), len(x_test)))
 
     dictionary.word2idx, dictionary.idx2word = dataLoader.assign_word_ids(
-        x_train['text'] + x_val['text'], vocab_size=vocab_size)
+        x_train['text'].append(x_val['text']), vocab_size=vocab_size)
     dataLoader.assign_category_ids(list(x_train['label']) + list(x_val['label']) + list(x_test['label']))
+    x_train['label'] = np.array(dataLoader.transfer_cat_to_id(x_train['label']))
+    x_val['label'] = np.array(dataLoader.transfer_cat_to_id(x_val['label']))
+    x_test['label'] = np.array(dataLoader.transfer_cat_to_id(x_test['label']))
     print("----processed {%d} word_2_id, {%d}cat_2_id----" % (len(dictionary.word2idx),
                                                               len(dataLoader.cat2id)))
 
@@ -59,9 +62,7 @@ def load_data_set(vocab_size):
     # x_train = dataLoader.transfer_word_to_id(x_train_texts, w2i)
     # x_val = dataLoader.transfer_word_to_id(x_val_texts, w2i)
     # x_test = dataLoader.transfer_word_to_id(x_test_texts, w2i)
-    # y_train = np.array(dataLoader.transfer_cat_to_id(y_train))
-    # y_val = np.array(dataLoader.transfer_cat_to_id(y_val))
-    # y_test = np.array(dataLoader.transfer_cat_to_id(y_test))
+
     # print("----finish transfering w2i,c2i----")
     #
     # x_train_pad = pad_sequences(x_train, maxlen=max_len, padding='post')
