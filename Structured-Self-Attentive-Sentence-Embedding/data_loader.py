@@ -5,8 +5,8 @@ import numpy as np
 from keras.datasets import imdb
 from keras.preprocessing.sequence import pad_sequences
 import torch.utils.data as data_utils
-from .data import Data_Utility
-from .util import Dictionary
+from data import Data_Utility
+from util import Dictionary
 
 
 def load_data_set(vocab_size):
