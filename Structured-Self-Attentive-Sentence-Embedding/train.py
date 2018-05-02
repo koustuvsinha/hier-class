@@ -26,8 +26,9 @@ def Frobenius(mat):
 
 def package(data, require_grad=False):
     """Package data for training / evaluation."""
-    data = map(lambda x: json.loads(x), data)
-    dat = map(lambda x: map(lambda y: dictionary.word2idx[y], x['text']), data)
+    # data = map(lambda x: json.loads(x), data)
+    dat = map(lambda x: map(lambda y: dictionary.word2idx[y] if\
+                y in dictionary.keys() else dictionary.word2idx['<unk>'], x['text']), data)
     maxlen = 0
     for item in dat:
         maxlen = max(maxlen, len(item))
@@ -50,7 +51,7 @@ def evaluate():
     total_loss = 0
     total_correct = 0
     for batch, i in enumerate(range(0, len(data_val), args.batch_size)):
-        data, targets = package(data_val[i:min(len(data_val), i+args.batch_size)], volatile=True)
+        data, targets = package(data_val[i:min(len(data_val), i + args.batch_size)], volatile=True)
         if args.cuda:
             data = data.cuda()
             targets = targets.cuda()
@@ -70,7 +71,7 @@ def train(epoch_number):
     total_pure_loss = 0  # without the penalization term
     start_time = time.time()
     for batch, i in enumerate(range(0, len(data_train), args.batch_size)):
-        data, targets = package(data_train[i:i+args.batch_size], require_grad)
+        data, targets = package(data_train[i:i + args.batch_size], require_grad)
         if args.cuda:
             data = data.cuda()
             targets = targets.cuda()
@@ -94,17 +95,17 @@ def train(epoch_number):
         if batch % args.log_interval == 0 and batch > 0:
             elapsed = time.time() - start_time
             print('| epoch {:3d} | {:5d}/{:5d} batches | ms/batch {:5.2f} | loss {:5.4f} | pure loss {:5.4f}'.format(
-                  epoch_number, batch, len(data_train) // args.batch_size,
-                  elapsed * 1000 / args.log_interval, total_loss[0] / args.log_interval,
-                  total_pure_loss[0] / args.log_interval))
+                epoch_number, batch, len(data_train) // args.batch_size,
+                                     elapsed * 1000 / args.log_interval, total_loss[0] / args.log_interval,
+                                     total_pure_loss[0] / args.log_interval))
             total_loss = 0
             total_pure_loss = 0
             start_time = time.time()
 
-#            for item in model.parameters():
-#                print item.size(), torch.sum(item.data ** 2), torch.sum(item.grad ** 2).data[0]
-#            print model.encoder.ws2.weight.grad.data
-#            exit()
+        #            for item in model.parameters():
+        #                print item.size(), torch.sum(item.data ** 2), torch.sum(item.grad ** 2).data[0]
+        #            print model.encoder.ws2.weight.grad.data
+        #            exit()
     evaluate_start_time = time.time()
     val_loss, acc = evaluate()
     print('-' * 89)
@@ -121,11 +122,11 @@ def train(epoch_number):
         for param_group in optimizer.param_groups:
             param_group['lr'] = param_group['lr'] * 0.2
     if not best_acc or acc > best_acc:
-        with open(args.save[:-3]+'.best_acc.pt', 'wb') as f:
+        with open(args.save[:-3] + '.best_acc.pt', 'wb') as f:
             torch.save(model, f)
         f.close()
         best_acc = acc
-    with open(args.save[:-3]+'.epoch-{:02d}.pt'.format(epoch_number), 'wb') as f:
+    with open(args.save[:-3] + '.epoch-{:02d}.pt'.format(epoch_number), 'wb') as f:
         torch.save(model, f)
     f.close()
 
@@ -144,7 +145,7 @@ if __name__ == '__main__':
     random.seed(args.seed)
 
     # # Load Data
-    data_train,data_val,data_test,dictionary,c2i=load_data_set(vocab_size=args.vocab_size)
+    data_train, data_val, data_test, dictionary, c2i = load_data_set(vocab_size=args.vocab_size)
     # print('Begin to load the dictionary.')
     # dictionary = Dictionary(path=args.dictionary)
 
@@ -186,7 +187,7 @@ if __name__ == '__main__':
         raise Exception('For other optimizers, please add it yourself. '
                         'supported ones are: SGD and Adam.')
     print('Begin to load data.')
-    train_loader, val_loader, test_loader, w2i, dataLoader.cat2id = load_data_set(max_len=500,vocab_size=100000, batch_size=args.batch_size)
+
     # data_train = open(args.train_data).readlines()
     # data_val = open(args.val_data).readlines()
 

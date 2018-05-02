@@ -66,7 +66,8 @@ class Data_Utility(data.Dataset):
         # create dictionary
         assert len(df_texts) == len(df['l3']) # l3 is the end level label
         print("finished tokenizing %d data instances"%len(df['l3']))
-        df = pandas.DataFrame([df_texts,df['l3']], columns = ('text', 'label'))
+        df = pandas.concat([df_texts,df['l3']],axis=1)
+        df.columns = ['text', 'label']
         # return df_texts, df['l3']
         return df
 
