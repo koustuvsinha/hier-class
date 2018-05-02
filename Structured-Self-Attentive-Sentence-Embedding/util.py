@@ -5,7 +5,7 @@ import argparse
 class Dictionary(object):
     def __init__(self, path=''):
         self.word2idx = dict()
-        self.idx2word = list()
+        self.idx2word = dict()
         if path != '':  # load an external dictionary
             words = json.loads(open(path, 'r').readline())
             for item in words:
@@ -13,8 +13,8 @@ class Dictionary(object):
 
     def add_word(self, word):
         if word not in self.word2idx:
-            self.idx2word.append(word)
-            self.word2idx[word] = len(self.idx2word) - 1
+            self.word2idx[word] = len(self.word2idx)
+            self.idx2word[len(self.idx2word)] = word
         return self.word2idx[word]
 
     def __len__(self):
@@ -69,5 +69,7 @@ def get_args():
                         help='type of optimizer')
     parser.add_argument('--penalization-coeff', type=float, default=1, 
                         help='the penalization coefficient')
+    parser.add_argument('--vocab_size', type=int, default=100000,
+                        help='vocab size for dictionary')
     return parser.parse_args()
 

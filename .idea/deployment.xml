@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <project version="4">
-  <component name="PublishConfigData" showDifferentInSync="false" showNewOnSourceInSync="false">
+  <component name="PublishConfigData" autoUpload="Always" serverName="ydong26@jc-gpu3.cs.mcgill.ca" showDifferentInSync="false" showNewOnSourceInSync="false">
     <serverData>
       <paths name="ydong26@garden-path.cs.mcgill.ca">
         <serverdata>
@@ -9,6 +9,14 @@
           </mappings>
         </serverdata>
       </paths>
+      <paths name="ydong26@jc-gpu3.cs.mcgill.ca">
+        <serverdata>
+          <mappings>
+            <mapping deploy="/home/ml/ydong26/phd/hier-class" local="$PROJECT_DIR$" web="/" />
+          </mappings>
+        </serverdata>
+      </paths>
     </serverData>
+    <option name="myAutoUpload" value="ALWAYS" />
   </component>
 </project>

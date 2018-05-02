@@ -2,6 +2,7 @@ from __future__ import print_function
 from models import *
 
 from util import Dictionary, get_args
+from data_loader import load_data_set
 
 import torch
 import torch.nn as nn
@@ -23,7 +24,7 @@ def Frobenius(mat):
         raise Exception('matrix for computing Frobenius norm should be with 3 dims')
 
 
-def package(data, volatile=False):
+def package(data, require_grad=False):
     """Package data for training / evaluation."""
     data = map(lambda x: json.loads(x), data)
     dat = map(lambda x: map(lambda y: dictionary.word2idx[y], x['text']), data)
@@ -38,8 +39,8 @@ def package(data, volatile=False):
         else:
             for j in range(maxlen - len(dat[i])):
                 dat[i].append(dictionary.word2idx['<pad>'])
-    dat = Variable(torch.LongTensor(dat), volatile=volatile)
-    targets = Variable(torch.LongTensor(targets), volatile=volatile)
+    dat = Variable(torch.LongTensor(dat), require_grad)
+    targets = Variable(torch.LongTensor(targets), require_grad)
     return dat.t(), targets
 
 
@@ -69,7 +70,7 @@ def train(epoch_number):
     total_pure_loss = 0  # without the penalization term
     start_time = time.time()
     for batch, i in enumerate(range(0, len(data_train), args.batch_size)):
-        data, targets = package(data_train[i:i+args.batch_size], volatile=False)
+        data, targets = package(data_train[i:i+args.batch_size], require_grad)
         if args.cuda:
             data = data.cuda()
             targets = targets.cuda()
@@ -142,11 +143,10 @@ if __name__ == '__main__':
             torch.cuda.manual_seed(args.seed)
     random.seed(args.seed)
 
-    # Load Dictionary
-    assert os.path.exists(args.train_data)
-    assert os.path.exists(args.val_data)
-    print('Begin to load the dictionary.')
-    dictionary = Dictionary(path=args.dictionary)
+    # # Load Data
+    data_train,data_val,data_test,dictionary,c2i=load_data_set(vocab_size=args.vocab_size)
+    # print('Begin to load the dictionary.')
+    # dictionary = Dictionary(path=args.dictionary)
 
     best_val_loss = None
     best_acc = None
@@ -186,8 +186,10 @@ if __name__ == '__main__':
         raise Exception('For other optimizers, please add it yourself. '
                         'supported ones are: SGD and Adam.')
     print('Begin to load data.')
-    data_train = open(args.train_data).readlines()
-    data_val = open(args.val_data).readlines()
+    train_loader, val_loader, test_loader, w2i, dataLoader.cat2id = load_data_set(max_len=500,vocab_size=100000, batch_size=args.batch_size)
+    # data_train = open(args.train_data).readlines()
+    # data_val = open(args.val_data).readlines()
+
     try:
         for epoch in range(args.epochs):
             train(epoch)
