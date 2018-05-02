@@ -19,19 +19,18 @@ import numpy as np
 def Frobenius(mat):
     size = mat.size()
     if len(size) == 3:  # batched matrix
-        ret = (torch.sum(torch.sum((mat ** 2), 1,keepdim=True), 2, keepdim=True).squeeze() + 1e-10) ** 0.5
-        new_ret=torch.sum(ret)
+        ret = (torch.sum(torch.sum((mat ** 2), 1, keepdim=True), 2, keepdim=True).squeeze() + 1e-10) ** 0.5
+        new_ret = torch.sum(ret)
         return torch.sum(ret) / size[0]
     else:
         raise Exception('matrix for computing Frobenius norm should be with 3 dims')
 
 
 def package(data, require_grad=False):
-    print(data)
     """Package data for training / evaluation."""
     # data = map(lambda x: json.loads(x), data)
-    dat = list(map(lambda x: list(map(lambda y: dictionary.word2idx[y] if\
-                y in dictionary.word2idx.keys() else dictionary.word2idx['<unk>'], x)), data['text']))
+    dat = list(map(lambda x: list(map(lambda y: dictionary.word2idx[y] if \
+        y in dictionary.word2idx.keys() else dictionary.word2idx['<unk>'], x)), data['text']))
     maxlen = 0
     for item in dat:
         maxlen = max(maxlen, len(item))
@@ -54,17 +53,17 @@ def evaluate():
     total_loss = 0
     total_correct = 0
     for batch, i in enumerate(range(0, len(data_val), args.batch_size)):
-        data, targets = package(data_val[i:min(len(data_val), i + args.batch_size)], volatile=True)
+        data, targets = package(data_val[i:min(len(data_val), i + args.batch_size)])
         if args.cuda:
-            data = data.cuda()
-            targets = targets.cuda()
+            data = data.cuda(args.gpu)
+            targets = targets.cuda(args.gpu)
         hidden = model.init_hidden(data.size(1))
         output, attention = model.forward(data, hidden)
         output_flat = output.view(data.size(1), -1)
-        total_loss += criterion(output_flat, targets).data
+        total_loss += criterion(output_flat, targets).data.cpu().numpy
         prediction = torch.max(output_flat, 1)[1]
         total_correct += torch.sum((prediction == targets).float())
-    return total_loss[0] / (len(data_val) // args.batch_size), total_correct.data[0] / len(data_val)
+    return total_loss / (len(data_val) // args.batch_size), total_correct.data[0] / len(data_val)
 
 
 def train(epoch_number):
@@ -76,12 +75,12 @@ def train(epoch_number):
     for batch, i in enumerate(range(0, len(data_train), args.batch_size)):
         data, targets = package(data_train[i:i + args.batch_size], False)
         if args.cuda:
-            data = data.cuda()
-            targets = targets.cuda()
+            data = data.cuda(args.gpu)
+            targets = targets.cuda(args.gpu)
         hidden = model.init_hidden(data.size(1))
         output, attention = model.forward(data, hidden)
         loss = criterion(output.view(data.size(1), -1), targets)
-        total_pure_loss += loss.data
+        total_pure_loss += loss.data.cpu().numpy()
 
         if attention.data is not None:  # add penalization term
             attentionT = torch.transpose(attention, 1, 2).contiguous()
@@ -90,25 +89,25 @@ def train(epoch_number):
         optimizer.zero_grad()
         loss.backward()
 
-        nn.utils.clip_grad_norm(model.parameters(), args.clip)
+        nn.utils.clip_grad_norm_(model.parameters(), args.clip)
         optimizer.step()
 
-        total_loss += loss.data
+        total_loss += loss.data.cpu().numpy()
 
         if batch % args.log_interval == 0 and batch > 0:
             elapsed = time.time() - start_time
             print('| epoch {:3d} | {:5d}/{:5d} batches | ms/batch {:5.2f} | loss {:5.4f} | pure loss {:5.4f}'.format(
                 epoch_number, batch, len(data_train) // args.batch_size,
-                                     elapsed * 1000 / args.log_interval, total_loss[0] / args.log_interval,
-                                     total_pure_loss[0] / args.log_interval))
+                                     elapsed * 1000 / args.log_interval, total_loss / args.log_interval,
+                                     total_pure_loss / args.log_interval))
             total_loss = 0
             total_pure_loss = 0
             start_time = time.time()
 
-        #            for item in model.parameters():
-        #                print item.size(), torch.sum(item.data ** 2), torch.sum(item.grad ** 2).data[0]
-        #            print model.encoder.ws2.weight.grad.data
-        #            exit()
+            #            for item in model.parameters():
+            #                print item.size(), torch.sum(item.data ** 2), torch.sum(item.grad ** 2).data[0]
+            #            print model.encoder.ws2.weight.grad.data
+            #            exit()
     evaluate_start_time = time.time()
     val_loss, acc = evaluate()
     print('-' * 89)
@@ -168,10 +167,10 @@ if __name__ == '__main__':
         'nfc': args.nfc,
         'dictionary': dictionary,
         'word-vector': args.word_vector,
-        'class-number': args.class_number
+        'class-number': len(c2i)
     })
     if args.cuda:
-        model = model.cuda()
+        model = model.cuda(args.gpu)
 
     print(args)
     I = Variable(torch.zeros(args.batch_size, args.attention_hops, args.attention_hops))
@@ -179,7 +178,7 @@ if __name__ == '__main__':
         for j in range(args.attention_hops):
             I.data[i][j][j] = 1
     if args.cuda:
-        I = I.cuda()
+        I = I.cuda(args.gpu)
 
     criterion = nn.CrossEntropyLoss()
     if args.optimizer == 'Adam':

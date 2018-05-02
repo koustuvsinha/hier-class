@@ -42,7 +42,7 @@ def load_data_set(vocab_size):
     print("----initial data loading----")
     dataLoader = Data_Utility()
     dictionary = Dictionary()
-    x_train = dataLoader.read(data_loc=data_loc, file_name="df_small_test.csv")
+    x_train = dataLoader.read(data_loc=data_loc, file_name="df_small_train.csv")
     x_val = x_train[:int(0.1 * len(x_train))]
     x_train = x_train[int(0.1 * len(x_train)):]
     x_test = dataLoader.read(data_loc=data_loc, file_name="df_small_test.csv")

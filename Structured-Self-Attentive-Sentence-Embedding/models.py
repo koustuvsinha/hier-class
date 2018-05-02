@@ -65,7 +65,7 @@ class SelfAttentiveEncoder(nn.Module):
         self.ws1 = nn.Linear(config['nhid'] * 2, config['attention-unit'], bias=False)
         self.ws2 = nn.Linear(config['attention-unit'], config['attention-hops'], bias=False)
         self.tanh = nn.Tanh()
-        self.softmax = nn.Softmax()
+        self.softmax = nn.Softmax(dim=1)
         self.dictionary = config['dictionary']
 #        self.init_weights()
         self.attention_hops = config['attention-hops']
@@ -90,7 +90,7 @@ class SelfAttentiveEncoder(nn.Module):
             -10000 * (concatenated_inp == self.dictionary.word2idx['<pad>']).float())
             # [bsz, hop, len] + [bsz, hop, len]
         alphas = self.softmax(penalized_alphas.view(-1, size[1]))  # [bsz*hop, len]
-        alphas = alphas.view(size[0], self.attention_hops, size[1])  # [bsz, hop, len]
+        alphas = alphas.view(size[0], self.attention_hops, size[1]) # [bsz, hop, len]
         return torch.bmm(alphas, outp), alphas
 
     def init_hidden(self, bsz):
