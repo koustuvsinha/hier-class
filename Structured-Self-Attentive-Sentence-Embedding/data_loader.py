@@ -41,8 +41,8 @@ def load_data_set(vocab_size):
 
     # DB pedia
 
-    save_list = ["x_train", "x_val", "x_test", "dictionary", "dataLoader.cat2id"]
-    if os.path.exists("x_train"):
+    # save_list = ["x_train", "x_val", "x_test", "dictionary", "dataLoader.cat2id"]
+    # if os.path.exists("x_train"):
 
     data_loc = '/home/ml/ksinha4/mlp/hier-class/data'
     print("----initial data loading----")

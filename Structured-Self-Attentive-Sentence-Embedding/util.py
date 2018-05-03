@@ -31,7 +31,7 @@ def get_args():
                         help='number of layers in BiLSTM')
     parser.add_argument('--attention-unit', type=int, default=350,
                         help='number of attention unit')
-    parser.add_argument('--attention-hops', type=int, default=1,
+    parser.add_argument('--attention-hops', type=int, default=30,
                         help='number of attention hops, for multi-hop attention model')
     parser.add_argument('--dropout', type=float, default=0.5,
                         help='dropout applied to layers (0 = no dropout)')
