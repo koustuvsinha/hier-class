@@ -41,6 +41,7 @@ class BiLSTM(nn.Module):
 
     def forward(self, inp, hidden):
         emb = self.drop(self.encoder(inp))
+        self.bilstm.flatten_parameters()
         outp = self.bilstm(emb, hidden)[0]
         if self.pooling == 'mean':
             outp = torch.mean(outp, 0).squeeze()

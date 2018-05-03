@@ -31,15 +31,15 @@ def get_args():
                         help='number of layers in BiLSTM')
     parser.add_argument('--attention-unit', type=int, default=350,
                         help='number of attention unit')
-    parser.add_argument('--attention-hops', type=int, default=30,
+    parser.add_argument('--attention-hops', type=int, default=1,
                         help='number of attention hops, for multi-hop attention model')
     parser.add_argument('--dropout', type=float, default=0.5,
                         help='dropout applied to layers (0 = no dropout)')
     parser.add_argument('--clip', type=float, default=0.5,
                         help='clip to prevent the too large grad in LSTM')
-    parser.add_argument('--nfc', type=int, default=3000,
+    parser.add_argument('--nfc', type=int, default=512,
                         help='hidden (fully connected) layer size for classifier MLP')
-    parser.add_argument('--lr', type=float, default=.006,
+    parser.add_argument('--lr', type=float, default=.001,
                         help='initial learning rate')
     parser.add_argument('--epochs', type=int, default=40,
                         help='upper epoch limit')
@@ -51,7 +51,7 @@ def get_args():
                         help='use which gpu')
     parser.add_argument('--log-interval', type=int, default=200, metavar='N',
                         help='report interval')
-    parser.add_argument('--save', type=str, default='self_attention.std.model',
+    parser.add_argument('--save', type=str, default='./model/self_attention.std.model',
                         help='path to save the final model')
     parser.add_argument('--dictionary', type=str, default='',
                         help='path to save the dictionary, for faster corpus loading')
@@ -67,7 +67,7 @@ def get_args():
                         help='batch size for training')
     parser.add_argument('--class-number', type=int, default=2,
                         help='number of classes')
-    parser.add_argument('--optimizer', type=str, default='SGD',
+    parser.add_argument('--optimizer', type=str, default='Adam',
                         help='type of optimizer')
     parser.add_argument('--penalization-coeff', type=float, default=1,
                         help='the penalization coefficient')

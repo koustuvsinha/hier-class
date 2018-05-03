@@ -19,8 +19,8 @@ import numpy as np
 def Frobenius(mat):
     size = mat.size()
     if len(size) == 3:  # batched matrix
-        ret = (torch.sum(torch.sum((mat ** 2), 1, keepdim=True), 2, keepdim=True).squeeze() + 1e-10) ** 0.5
-        new_ret = torch.sum(ret)
+        ret = (torch.sum(torch.sum((mat ** 2), 1,keepdim=True), 2, keepdim=True).squeeze() + 1e-10) ** 0.5
+        new_ret=torch.sum(ret)
         return torch.sum(ret) / size[0]
     else:
         raise Exception('matrix for computing Frobenius norm should be with 3 dims')
@@ -29,8 +29,8 @@ def Frobenius(mat):
 def package(data, require_grad=False):
     """Package data for training / evaluation."""
     # data = map(lambda x: json.loads(x), data)
-    dat = list(map(lambda x: list(map(lambda y: dictionary.word2idx[y] if \
-        y in dictionary.word2idx.keys() else dictionary.word2idx['<unk>'], x)), data['text']))
+    dat = list(map(lambda x: list(map(lambda y: dictionary.word2idx[y] if\
+                y in dictionary.word2idx.keys() else dictionary.word2idx['<unk>'], x)), data['text']))
     maxlen = 0
     for item in dat:
         maxlen = max(maxlen, len(item))
@@ -47,24 +47,23 @@ def package(data, require_grad=False):
     return dat.t(), targets
 
 
-def evaluate():
-    """evaluate the model while training"""
-    model.eval()  # turn on the eval() switch to disable dropout
+def evaluate(att_model, data_val_or_test):
+    """evaluate the model """
+    att_model.eval()  # turn on the eval() switch to disable dropout
     total_loss = 0
     total_correct = 0
-    for batch, i in enumerate(range(0, len(data_val), args.batch_size)):
-        data, targets = package(data_val[i:min(len(data_val), i + args.batch_size)])
+    for batch, i in enumerate(range(0, len(data_val_or_test), args.batch_size)):
+        data, targets = package(data_val_or_test[i:min(len(data_val_or_test), i + args.batch_size)])
         if args.cuda:
             data = data.cuda(args.gpu)
             targets = targets.cuda(args.gpu)
-        hidden = model.init_hidden(data.size(1))
-        output, attention = model.forward(data, hidden)
+        hidden = att_model.init_hidden(data.size(1))
+        output, attention = att_model.forward(data, hidden)
         output_flat = output.view(data.size(1), -1)
-        total_loss += criterion(output_flat, targets).data.cpu().numpy
+        total_loss += criterion(output_flat, targets).data.cpu().numpy()
         prediction = torch.max(output_flat, 1)[1]
         total_correct += torch.sum((prediction == targets).float())
     return total_loss / (len(data_val) // args.batch_size), total_correct.data[0] / len(data_val)
-
 
 def train(epoch_number):
     global best_val_loss, best_acc
@@ -104,16 +103,25 @@ def train(epoch_number):
             total_pure_loss = 0
             start_time = time.time()
 
-            #            for item in model.parameters():
-            #                print item.size(), torch.sum(item.data ** 2), torch.sum(item.grad ** 2).data[0]
-            #            print model.encoder.ws2.weight.grad.data
-            #            exit()
+        #            for item in model.parameters():
+        #                print item.size(), torch.sum(item.data ** 2), torch.sum(item.grad ** 2).data[0]
+        #            print model.encoder.ws2.weight.grad.data
+        #            exit()
     evaluate_start_time = time.time()
-    val_loss, acc = evaluate()
+
+    val_loss, acc = evaluate(model,data_val)
     print('-' * 89)
     fmt = '| evaluation | time: {:5.2f}s | valid loss (pure) {:5.4f} | Acc {:8.4f}'
     print(fmt.format((time.time() - evaluate_start_time), val_loss, acc))
     print('-' * 89)
+
+    print("finish loading test model")
+    test_loss, test_acc = evaluate(model, data_test)
+    print('-' * 89)
+    fmt = '| testing | valid loss (pure) {:5.4f} | Acc {:8.4f}'
+    print(fmt.format(test_loss, test_acc))
+    print('-' * 89)
+
     # Save the model, if the validation loss is the best we've seen so far.
     if not best_val_loss or val_loss < best_val_loss:
         with open(args.save, 'wb') as f:
@@ -190,8 +198,15 @@ if __name__ == '__main__':
                         'supported ones are: SGD and Adam.')
     print('Begin to load data.')
 
-    # data_train = open(args.train_data).readlines()
-    # data_val = open(args.val_data).readlines()
+    # during testing, only do here:
+    test_model = torch.load("self_attention.model",
+                            map_location=lambda storage, loc: storage.cuda(0))
+    print("finish lading test model")
+    test_loss, test_acc = evaluate(test_model, data_test)
+    print('-' * 89)
+    fmt = '| testing | valid loss (pure) {:5.4f} | Acc {:8.4f}'
+    print(fmt.format(test_loss, test_acc))
+    print('-' * 89)
 
     try:
         for epoch in range(args.epochs):
