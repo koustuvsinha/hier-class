@@ -31,7 +31,7 @@ def get_args():
                         help='number of layers in BiLSTM')
     parser.add_argument('--attention-unit', type=int, default=350,
                         help='number of attention unit')
-    parser.add_argument('--attention-hops', type=int, default=30,
+    parser.add_argument('--attention-hops', type=int, default=1,
                         help='number of attention hops, for multi-hop attention model')
     parser.add_argument('--dropout', type=float, default=0.5,
                         help='dropout applied to layers (0 = no dropout)')
@@ -45,13 +45,14 @@ def get_args():
                         help='upper epoch limit')
     parser.add_argument('--seed', type=int, default=1111,
                         help='random seed')
+    
     parser.add_argument('--cuda', action='store_false',
                         help='use CUDA')
     parser.add_argument('--gpu', type=int, default=0,
                         help='use which gpu')
     parser.add_argument('--log-interval', type=int, default=200, metavar='N',
                         help='report interval')
-    parser.add_argument('--save', type=str, default='./model/self_attention.std.model',
+    parser.add_argument('--save', type=str, default='self_attention.pt',
                         help='path to save the final model')
     parser.add_argument('--dictionary', type=str, default='',
                         help='path to save the dictionary, for faster corpus loading')
@@ -63,6 +64,7 @@ def get_args():
                         help='location of the development data, should be a json file')
     parser.add_argument('--test-data', type=str, default='',
                         help='location of the test data, should be a json file')
+    
     parser.add_argument('--batch-size', type=int, default=32,
                         help='batch size for training')
     parser.add_argument('--class-number', type=int, default=2,
@@ -73,5 +75,12 @@ def get_args():
                         help='the penalization coefficient')
     parser.add_argument('--vocab_size', type=int, default=100000,
                         help='vocab size for dictionary')
+    parser.add_argument('--exp_num', type=int, default=0,
+                        help='experiment number for easy track experiments')
+    parser.add_argument('--dataset_type', type=str, default="DBpedia",
+                        help='DBpedia or WIKI')
+    parser.add_argument('--pooling', type=str, default="max",
+                        help='all(self_attention), mean(blstm), max(blstm)')
+
     return parser.parse_args()
 

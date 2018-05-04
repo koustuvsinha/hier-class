@@ -1,6 +1,5 @@
 ## Data loader
 ## Read and prepare data for training.
-## TODO: Use torch.DataLoader for efficient batch representations
 
 import torch
 import torch.utils.data as data
@@ -60,12 +59,12 @@ class Data_Utility(data.Dataset):
         df = pandas.read_csv(data_loc + '/' + file_name)
         df = df.sample(frac=1).reset_index(drop=True)
         # print(df.head(10))
-        print("finished loading %d data instances" % len(df))
+        # print("finished loading %d data instances" % len(df))
         df_texts = [self.tokenize(text) for text in df.text]
         # df_texts = df.text.apply(self.tokenize)
         # create dictionary
         assert len(df_texts) == len(df['l3']) # l3 is the end level label
-        print("finished tokenizing %d data instances"%len(df['l3']))
+        # print("finished tokenizing %d data instances"%len(df['l3']))
 
         df = pandas.DataFrame(list(zip(df_texts, list(df['l3']))))
         df.columns=['text', 'label']
@@ -122,7 +121,7 @@ class Data_Utility(data.Dataset):
         for tok in special_tokens:
             word2id[tok] = id
             id += 1
-            print(tok,word2id[tok])
+            print(tok,word2id[tok], end=' ')
 
         word_set = [element for text in df_texts for element in text]
         c = Counter(word_set)
@@ -138,7 +137,7 @@ class Data_Utility(data.Dataset):
             word2id[word] = id
             id += 1
         id2word = {v: k for k, v in word2id.items()}
-        print('finishing processing %d vocabs' % len(word2id))
+        # print('finishing processing %d vocabs' % len(word2id))
         return word2id, id2word
 
     def transfer_word_to_id(self, df_texts, w2i):
