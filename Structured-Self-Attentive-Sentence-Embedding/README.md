@@ -7,31 +7,31 @@ source: https://github.com/ExplorerFreda/Structured-Self-Attentive-Sentence-Embe
 We use it for classification on DBpedia dataset: 
 * attention with 1-hop
 
-| epoch  19 |  9600/ 9668 batches | ms/batch 301.02 | loss 0.2641 | pure loss 0.2606
+| epoch  21 |  9600/ 9668 batches | ms/batch 307.81 | loss 0.2565 | pure loss 0.2534
 -----------------------------------------------------------------------------------------
-| evaluation | time: 77.50s | valid loss (pure) 0.3089 | Acc   0.9350
+| evaluation | time: 74.88s | valid loss (pure) 0.3055 | Acc   0.9350
 -----------------------------------------------------------------------------------------
 finish loading test model
 -----------------------------------------------------------------------------------------
-| testing | valid loss (pure) 0.2828 | Acc   0.9383
+| testing | valid loss (pure) 0.2803 | Acc   0.9388
 
 * attention with 30 hops
 
-| epoch  19 |  9600/ 9668 batches | ms/batch 303.60 | loss 1.7985 | pure loss 0.7682
+| epoch  21 |  9600/ 9668 batches | ms/batch 304.29 | loss 1.7869 | pure loss 0.7578
 -----------------------------------------------------------------------------------------
-| evaluation | time: 76.02s | valid loss (pure) 0.4976 | Acc   0.8658
+| evaluation | time: 75.66s | valid loss (pure) 0.4910 | Acc   0.8670
 -----------------------------------------------------------------------------------------
 finish loading test model
 -----------------------------------------------------------------------------------------
-| testing | valid loss (pure) 0.4717 | Acc   0.8695
+| testing | valid loss (pure) 0.4669 | Acc   0.8713
 -----------------------------------------------------------------------------------------
 
 * BiLSTM with max pooling
 
-| epoch   7 |  9600/ 9668 batches | ms/batch 529.58 | loss 0.3582 | pure loss 0.3582
+| epoch   8 |  9600/ 9668 batches | ms/batch 539.25 | loss 0.3396 | pure loss 0.3396
 -----------------------------------------------------------------------------------------
-| evaluation | time: 167.54s | valid loss (pure) 0.3340 | Acc   0.9280
+| evaluation | time: 169.82s | valid loss (pure) 0.3204 | Acc   0.9309
 -----------------------------------------------------------------------------------------
 -----------------------------------------------------------------------------------------
-| test set result | valid loss (pure) 0.3178 | Acc   0.9289
+| test set result | valid loss (pure) 0.3042 | Acc   0.9312
 -----------------------------------------------------------------------------------------
