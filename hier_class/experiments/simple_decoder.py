@@ -9,6 +9,7 @@ from torch.optim.lr_scheduler import ReduceLROnPlateau
 import numpy as np
 import logging
 from sacred import Experiment
+from pprint import pprint, pformat
 import logging
 from tensorboardX import SummaryWriter
 import time
@@ -89,6 +90,7 @@ def exp_config():
     seed = 1111
     attention_type = 'self'
     use_attn_mask = False # use attention mask
+    renormalize = 'category'
 
 
 @ex.automain
@@ -152,6 +154,9 @@ def train(_config, _run):
         'max_categories': max_categories,
         'gpu':_config['gpu']
     })
+
+    logging.info("Parameters")
+    logging.info(pformat(_config))
 
     ## calculate label weights
     ## for level1 labels = 1.0
@@ -268,7 +273,8 @@ def train(_config, _run):
                                             loss_weights=label_weights,
                                             max_categories=max_categories,
                                             target_level=1,
-                                            attn_penalty_coeff=_config['attn_penalty_coeff'])
+                                            attn_penalty_coeff=_config['attn_penalty_coeff'],
+                                            renormalize=_config['renormalize'])
             loss.backward()
             #m_params = [p for p in model.parameters() if p.requires_grad]
             #nn.utils.clip_grad_norm(m_params, _config['clip_grad'])
@@ -295,7 +301,8 @@ def train(_config, _run):
                                             loss_weights=label_weights,
                                             max_categories=max_categories,
                                             target_level=1,
-                                            attn_penalty_coeff=_config['attn_penalty_coeff'])
+                                            attn_penalty_coeff=_config['attn_penalty_coeff'],
+                                            renormalize=_config['renormalize'])
             stats.update_validation(loss.data[0],accs, attn=attns, src=src_data, preds=preds, correct=correct,
                                     correct_confs=correct_confs, incorrect_confs=incorrect_confs)
         stats.log_loss()
