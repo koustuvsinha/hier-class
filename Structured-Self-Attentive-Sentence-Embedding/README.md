@@ -3,6 +3,7 @@ An modified version of open-source implementation of the paper ``A Structured Se
 https://arxiv.org/abs/1703.03130
 
 source: https://github.com/ExplorerFreda/Structured-Self-Attentive-Sentence-Embedding
+
 We use it for classification on DBpedia dataset: 
 * attention with 1-hop
 
