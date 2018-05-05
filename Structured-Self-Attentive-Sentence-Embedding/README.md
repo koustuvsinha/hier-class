@@ -26,3 +26,7 @@ finish loading test model\
 | epoch  23 |  9600/ 9668 batches | ms/batch 536.91 | loss 0.2345 | pure loss 0.2345\
 | evaluation | time: 169.24s | valid loss (pure) 0.2680 | Acc   0.9416\
 | test set result | valid loss (pure) 0.2516 | Acc   0.9420\
+
+our best model:
+- Level3 with attention: 0.9506
+- Level3 without attention (bilstm): 0.9492
