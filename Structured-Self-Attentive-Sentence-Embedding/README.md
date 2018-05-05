@@ -20,7 +20,7 @@ finish loading test model\
 * BiLSTM with mean pooling\
 | epoch  15 |  9600/ 9668 batches | ms/batch 537.28 | loss 0.1909 | pure loss 0.1909\
 | evaluation | time: 168.25s | valid loss (pure) 0.3319 | Acc   0.9459\
-| test set result | valid loss (pure) 0.3088 | Acc   0.9468\
+| test set result | valid loss (pure) 0.3088 | **Acc   0.9468**\
 
 * BiLSTM with max pooling\
 | epoch  23 |  9600/ 9668 batches | ms/batch 536.91 | loss 0.2345 | pure loss 0.2345\
@@ -28,5 +28,5 @@ finish loading test model\
 | test set result | valid loss (pure) 0.2516 | Acc   0.9420\
 
 our best model:
-- Level3 with attention: 0.9506
+- Level3 with attention: **0.9506**
 - Level3 without attention (bilstm): 0.9492
