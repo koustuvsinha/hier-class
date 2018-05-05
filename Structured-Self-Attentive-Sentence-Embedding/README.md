@@ -6,10 +6,10 @@ source: https://github.com/ExplorerFreda/Structured-Self-Attentive-Sentence-Embe
 
 We use it for classification on DBpedia dataset: 
 * attention with 1-hop\
-| epoch  21 |  9600/ 9668 batches | ms/batch 307.81 | loss 0.2565 | pure loss 0.2534\
-| evaluation | time: 74.88s | valid loss (pure) 0.3055 | Acc   0.9350\
+| epoch  39 |  9600/ 9668 batches | ms/batch 316.91 | loss 0.2476 | pure loss 0.2447\
+| evaluation | time: 74.29s | valid loss (pure) 0.2984 | Acc   0.9370\
 finish loading test model\
-| testing | valid loss (pure) 0.2803 | Acc   0.9388\
+| testing | valid loss (pure) 0.2745 | Acc   0.9404\
 
 * attention with 30 hops\
 | epoch  39 |  9600/ 9668 batches | ms/batch 161.31 | loss 1.7065 | pure loss 0.7000\
