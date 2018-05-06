@@ -38,9 +38,9 @@ class DocumentLevelAttention(nn.Module):
     def forward(self, q, k, v, encoder_lens=None, attn_mask=None, atm=True):
         '''
 
-        :param q: query
-        :param k: key
-        :param v: value
+        :param q: query - category embedding
+        :param k: key - encoder outputs
+        :param v: value - encoder outputs
         :param encoder_lens: length of the encoded values
         :param attn_mask: inverse mask. for valid elements its 0, for padding its 1.
         :return:

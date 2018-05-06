@@ -28,6 +28,7 @@ from hier_class.models import decoders, baselines
 from hier_class.utils import constants as CONSTANTS
 from hier_class.utils import model_utils as mu
 from hier_class.utils.stats import Statistics
+from hier_class.utils.evaluate import evaluate_test
 import pdb
 
 ex = Experiment()
@@ -60,11 +61,13 @@ def exp_config():
     data_type = 'WIKI'
     data_loc = '/home/ml/ksinha4/datasets/data_WIKI'
     data_path = 'wiki_pruned'
-    file_name = 'full_docs_2.csv'
+    file_name = 'full_docs_2_train.csv'
+    test_file_name = 'full_docs_2_test.csv'
+    test_output_name = 'full_docs_2_output.csv'
     #data_loc = '/home/ml/ksinha4/datasets/data_WOS/WebOfScience/WOS46985'
     tokenization = 'word'
     batch_size = 16
-    epochs = 60
+    epochs = 20
     level = -1
     levels = 3
     cat_emb_dim = 64
@@ -90,7 +93,8 @@ def exp_config():
     seed = 1111
     attention_type = 'self'
     use_attn_mask = False # use attention mask
-    renormalize = 'category'
+    renormalize = 'level'
+    single_attention = False
 
 
 @ex.automain
@@ -311,6 +315,10 @@ def train(_config, _run):
         tf_ratio = tf_ratio * _config['tf_anneal']
         ## saving model
         mu.save_model(model,0,0,_config['exp_name'],model_params)
+    ## Evaluate Testing data
+    model.eval()
+    evaluate_test(model,_config['test_file_name'],_config['test_output_name'],_config)
+
 
 
 
