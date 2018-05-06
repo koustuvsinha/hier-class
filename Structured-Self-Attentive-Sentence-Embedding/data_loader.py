@@ -71,6 +71,8 @@ def load_data_set(vocab_size,dataset_type):
     # save the processed files in pickle
     save_list=[x_train, x_val, x_test, dictionary, dataLoader.cat2id]
     for i in range(len(save_list_str)):
+        if not os.path.exists("./data"):
+            os.mkdir("./data")
         with open("./data/%s.%s.p"%(dataset_type,save_list_str[i]),'wb') as f:
             pickle.dump(save_list[i],f)
     return x_train, x_val, x_test, dictionary, dataLoader.cat2id
