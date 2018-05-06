@@ -1,6 +1,5 @@
 ## Data loader
 ## Read and prepare data for training.
-## TODO: Use torch.DataLoader for efficient batch representations
 
 import torch
 import torch.utils.data as data
@@ -28,11 +27,14 @@ class Data_Utility(data.Dataset):
 
         :param exp_name:
         :param train_test_split:
-        :param decoder_ready: If decoder_ready = True, then return labels with a starting 0 label and shift all labels by 1
+        :param decoder_ready: If decoder_ready = True, then return labels with a starting 0 label
+         and shift all labels by 1
         """
         self.word2id = {}
         self.id2word = {}
         self.dyna_dict = {}
+        self.cat2id={}
+        self.id2cat={}
         self.train_indices = []
         self.test_indices = []
         self.split_ratio = train_test_split
@@ -46,115 +48,113 @@ class Data_Utility(data.Dataset):
         if not os.path.exists(self.save_path_base):
             os.makedirs(self.save_path_base)
 
-    def preprocess(
-            self, data_type='', data_loc='', file_name='full_docs_2.csv', tokenization='word'):
+    def read(self,  data_loc='',
+            file_name='full_docs_2.csv', tokenization='word'):
         """
-        Given data type and location, load and preprocess in an uniform format
-        Also create dynamic dictionaries here
-        :param data_type: WOS, LSHTC, WIKI
+        Given data type and location, load data
         :param data_loc: location of dataset
         :param tokenization: mode of tokenization : word, char
-        :return:
+        :return: (text,label) df_text is the tokenized text, df['l3'] last layer label
         """
-        ## Unified data format - should have two json files, one for data and other for ids / dictionaries
-        data_m = {}
-        dict_m = {}
-        items = Counter()  # set()
-        y_classes = []
-        text_data = []
+        df = pandas.read_csv(data_loc + '/' + file_name)
+        df = df.sample(frac=1).reset_index(drop=True)
+        # print(df.head(10))
+        # print("finished loading %d data instances" % len(df))
+        df_texts = [self.tokenize(text) for text in df.text]
+        # df_texts = df.text.apply(self.tokenize)
+        # create dictionary
+        assert len(df_texts) == len(df['l3']) # l3 is the end level label
+        # print("finished tokenizing %d data instances"%len(df['l3']))
 
-        if data_type == 'WOS':
-            ## Web of science data
-            with open(data_loc + '/X.txt') as fp:
-                for line in fp:
-                    l_ = self.tokenize(line.strip(), mode=tokenization)
-                    items.update(l_)
-                    text_data.append(l_)
-            dict_m['word2id'], dict_m['id2word'] = self.assign_wordids(items, self.special_tokens)
-            ## add the level1, level2 and level3 in per array
+        df = pandas.DataFrame(list(zip(df_texts, list(df['l3']))))
+        df.columns=['text', 'label']
+        # return df_texts, df['l3']
+        return df
 
-            y_1 = []
-            y_2 = []
-            y_3 = []
-            with open(data_loc + '/YL1.txt') as fp:
-                for line in fp:
-                    y_1.append(int(line.strip()))
-            with open(data_loc + '/YL2.txt') as fp:
-                for line in fp:
-                    y_2.append(int(line.strip()))
-            with open(data_loc + '/Y.txt') as fp:
-                for line in fp:
-                    y_3.append(int(line.strip()))
-            for i in range(len(y_1)):
-                y_classes.append([y_1[i],y_2[i],y_3[i]])
-        elif data_type == 'WIKI':
-            df = pandas.read_csv(data_loc + '/' + file_name)
-            y_class2id = {'l1':{},'l2':{},'l3':{}}
-            ct_dict = {'l1':0,'l2':0,'l3':0}
-
-            def gen_class_id(row, level):
-                class_name = row[level]
-                ct = ct_dict[level]
-                if class_name not in y_class2id[level]:
-                    y_class2id[level][class_name] = ct
-                    ct_dict[level] += 1
-                return y_class2id[level][class_name]
-
-            for i,row in df.iterrows():
-                l_1 = gen_class_id(row,'l1')
-                l_2 = gen_class_id(row, 'l2')
-                l_3 = gen_class_id(row, 'l3')
-                y_classes.append([l_1,l_2,l_3])
-                text = row['text']
-
-                # cut the max tokens in the doc
-                old_text = self.tokenize(str(text), mode=tokenization)
-                if self.max_word_doc > 0 and len(old_text) > self.max_word_doc:
-                   text = " ".join(old_text[:self.max_word_doc])
+    def assign_category_ids(self, y):
+        id = 0
+        cat2id = {}
+        category_set = list(set(y))
+        for key in category_set:
+            cat2id[key] = id
+            id += 1
+        id2cat = {v: k for k, v in cat2id.items()}
+        self.cat2id=cat2id
+        self.id2cat=id2cat
 
 
-                if '<sent>' in text:
-                    # data has been sentence tokenized
-                    text = text.split('<sent>')
-                    text = [self.tokenize(str(t), mode=tokenization) for t in text]
-                else:
-                    text = self.tokenize(str(text), mode=tokenization)
-                text_data.append(text)
-                items.update(text)
+    def add_to_cat2id(self,key):
+        id = len(self.cat2id)
+        self.cat2id[key] = id
+        self.id2cat[id]=key
 
-            data_m['y_class2id'] = y_class2id
-            dict_m['word2id'], dict_m['id2word'] = self.assign_wordids(items, self.special_tokens)
+    def transfer_cat_to_id(self, df_y):
+        """
+        this method transfers list of labels into list of category ids
+        :param df_y: list of texts
+        :param c2i: dictionary for category to ids
+        :return: df_ids: list of categories in their ids
+        """
+        output=[]
+        for w in df_y:
+            if w not in self.cat2id.keys():
+                self.add_to_cat2id(w)
+        y_in_id = [int(self.cat2id[w]) for w in df_y]
+        assert max(y_in_id) < len(self.cat2id)
+        return y_in_id
 
-        assert len(y_classes) == len(text_data)
-        data_m['data'] = text_data
-        data_m['labels'] = y_classes
 
+    def assign_word_ids(self, df_texts,
+                        special_tokens=["<pad>", "<unk>","<sos>","<eos>"],
+                        vocab_size=-1):
+        """
+        Given df_texts (list of sent tokens), create word2id and id2word
+        based on the most common words
+        :param  df_text: list of sent tokens
+        :param special_tokens: set of special tokens to add into dictionary
+        :param vocab_size: max_number of vocabs
+        :return: word2id, id2word
+        """
+        id = 0
+        word2id = {}
+        # add special tokens in w2i
+        for tok in special_tokens:
+            word2id[tok] = id
+            id += 1
+            print(tok,word2id[tok], end=' ')
 
-        ## create dynamic dictionary
-        ## format: <l0>:[<l1>], <l1>:[<l2>]...
-        ## append each node with its hierarchy label. l0_{node}
-        dy_dict = {}
-        label_meta = {}
-        for label_arr in data_m['labels']:
-            for level, node in enumerate(label_arr):
-                if level < len(label_arr) - 1:
-                    node_rep = 'l{}_{}'.format(level, node)
-                    if node_rep not in dy_dict:
-                        dy_dict[node_rep] = []
-                    dy_dict[node_rep].append(label_arr[level + 1])
-                if level not in label_meta:
-                    label_meta[level] = []
-                label_meta[level].append(node)
-        dict_m['dyna_dict'] = dy_dict
-        dict_m['label_meta'] = label_meta
+        word_set = [element for text in df_texts for element in text]
+        c = Counter(word_set)
 
-        ## save the data and dictionaries
-        pd = {
-            'dict_m' : dict_m,
-            'data_m' : data_m
-        }
-        json.dump(pd, open(self.save_path_base + '/{}_processed_{}.json'.format(data_type, tokenization), 'w'))
-        return pd
+        ## if max_vocab is not -1, then shrink the word size
+        if vocab_size >= 0:
+            words = [tup[0] for tup in c.most_common(vocab_size - len(special_tokens))]
+        else:
+            words = list(c.keys())
+
+        # add regular words in
+        for word in words:
+            word2id[word] = id
+            id += 1
+        id2word = {v: k for k, v in word2id.items()}
+        # print('finishing processing %d vocabs' % len(word2id))
+        return word2id, id2word
+
+    def transfer_word_to_id(self, df_texts, w2i):
+        """
+        this method transfers list of text into list of w2i ids
+        :param df_texts: list of texts
+        :param w2i: dictionary for word to ids
+        :return: df_ids: list of texts in their ids
+        """
+        dict_len = len(w2i)
+        def transfer_word_2_id(text,w2i_dict):
+            text_in_id = [w2i_dict[w] if w in w2i_dict.keys()
+             else w2i_dict["<unk>"] for w in text]
+            assert max(text_in_id) < dict_len
+
+        df_ids = [transfer_word_2_id(text, w2i) for text in df_texts]
+        return df_ids
 
     def get_level_labels(self, level=0):
         """
@@ -183,30 +183,7 @@ class Data_Utility(data.Dataset):
         if mode == 'char':
             return sent.split()
 
-    def assign_wordids(self, words, special_tokens={"<pad>", "<unk>"}):
-        """
-        Given a set of words, create word2id and id2word
-        :param words: set of words
-        :param special_tokens: set of special tokens to add into dictionary
-        :return: word2id, id2word
-        """
-        count = 0
-        word2id = {}
-        ## if max_vocab is not -1, then shrink the word size
-        if self.max_vocab >= 0:
-            words = [tup[0] for tup in words.most_common(self.max_vocab)]
-        else:
-            words = list(words.keys())
 
-        if special_tokens:
-            for tok in special_tokens:
-                word2id[tok] = count
-                count +=1
-        for word in words:
-            word2id[word] = count
-            count +=1
-        id2word = {v:k for k,v in word2id.items()}
-        return word2id, id2word
 
     def load(self, data_type='', data_loc='', file_name='', tokenization='word'):
         ## Load previously preprocessed data, and add to the object

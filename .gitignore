@@ -115,3 +115,5 @@ saved/
 *.csv
 *.mod
 
+/Structured-Self-Attention/
+!/Structured-Self-Attention/
