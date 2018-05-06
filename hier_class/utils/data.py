@@ -5,7 +5,6 @@
 import torch
 import torch.utils.data as data
 from torch.autograd import Variable
-from collections import Counter
 import os
 from os.path import dirname, abspath
 from tqdm import tqdm
@@ -15,20 +14,22 @@ import random
 import numpy as np
 import pandas
 from hier_class.utils import constants
+from collections import Counter
 import logging
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(message)s'
 )
+import pdb
 
 class Data_Utility(data.Dataset):
-    def __init__(self, exp_name='', train_test_split=0.8,
-                 decoder_ready=False, max_vocab=-1, max_word_doc=-1):
+    def __init__(self, data_path='', train_test_split=0.8, decoder_ready=False,max_vocab=-1,max_word_doc=-1, level=-1):
         """
 
-        :param exp_name:
+        :param data_path:
         :param train_test_split:
         :param decoder_ready: If decoder_ready = True, then return labels with a starting 0 label and shift all labels by 1
+        :param max_vocab = -1 by default
         """
         self.word2id = {}
         self.id2word = {}
@@ -41,13 +42,13 @@ class Data_Utility(data.Dataset):
         self.decoder_ready = decoder_ready
         self.max_vocab = max_vocab
         self.max_word_doc = max_word_doc
+        self.level = level # select which levels to choose. if -1, then choose all
         parent_dir = dirname(dirname(dirname(abspath(__file__))))
-        self.save_path_base = parent_dir + '/saved/' + exp_name
+        self.save_path_base = parent_dir + '/data/' + data_path
         if not os.path.exists(self.save_path_base):
             os.makedirs(self.save_path_base)
 
-    def preprocess(
-            self, data_type='', data_loc='', file_name='full_docs_2.csv', tokenization='word'):
+    def preprocess(self, data_type='', data_loc='', file_name='full_docs_2.csv', tokenization='word'):
         """
         Given data type and location, load and preprocess in an uniform format
         Also create dynamic dictionaries here
@@ -59,9 +60,10 @@ class Data_Utility(data.Dataset):
         ## Unified data format - should have two json files, one for data and other for ids / dictionaries
         data_m = {}
         dict_m = {}
-        items = Counter()  # set()
+        items = Counter() #set()
         y_classes = []
         text_data = []
+        data_indexes = []
 
         if data_type == 'WOS':
             ## Web of science data
@@ -88,7 +90,8 @@ class Data_Utility(data.Dataset):
             for i in range(len(y_1)):
                 y_classes.append([y_1[i],y_2[i],y_3[i]])
         elif data_type == 'WIKI':
-            df = pandas.read_csv(data_loc + '/' + file_name)
+            full_data_csv_path = data_loc + '/' + file_name
+            df = pandas.read_csv(full_data_csv_path)
             y_class2id = {'l1':{},'l2':{},'l3':{}}
             ct_dict = {'l1':0,'l2':0,'l3':0}
 
@@ -104,30 +107,30 @@ class Data_Utility(data.Dataset):
                 l_1 = gen_class_id(row,'l1')
                 l_2 = gen_class_id(row, 'l2')
                 l_3 = gen_class_id(row, 'l3')
-                y_classes.append([l_1,l_2,l_3])
                 text = row['text']
-
-                # cut the max tokens in the doc
-                old_text = self.tokenize(str(text), mode=tokenization)
-                if self.max_word_doc > 0 and len(old_text) > self.max_word_doc:
-                   text = " ".join(old_text[:self.max_word_doc])
-
-
+                text = text.lower()
                 if '<sent>' in text:
                     # data has been sentence tokenized
                     text = text.split('<sent>')
                     text = [self.tokenize(str(t), mode=tokenization) for t in text]
                 else:
                     text = self.tokenize(str(text), mode=tokenization)
+                ## prune docs by max words
+                if self.max_word_doc > 0 and len(text) > self.max_word_doc:
+                    text = text[:self.max_word_doc]
                 text_data.append(text)
                 items.update(text)
+                y_classes.append([l_1, l_2, l_3])
+                data_indexes.append(i)
 
             data_m['y_class2id'] = y_class2id
             dict_m['word2id'], dict_m['id2word'] = self.assign_wordids(items, self.special_tokens)
+            data_m['data_path'] = full_data_csv_path
 
         assert len(y_classes) == len(text_data)
         data_m['data'] = text_data
         data_m['labels'] = y_classes
+        data_m['indexes'] = data_indexes
 
 
         ## create dynamic dictionary
@@ -183,7 +186,7 @@ class Data_Utility(data.Dataset):
         if mode == 'char':
             return sent.split()
 
-    def assign_wordids(self, words, special_tokens={"<pad>", "<unk>"}):
+    def assign_wordids(self, words, special_tokens=None):
         """
         Given a set of words, create word2id and id2word
         :param words: set of words
@@ -197,7 +200,6 @@ class Data_Utility(data.Dataset):
             words = [tup[0] for tup in words.most_common(self.max_vocab)]
         else:
             words = list(words.keys())
-
         if special_tokens:
             for tok in special_tokens:
                 word2id[tok] = count
@@ -223,44 +225,85 @@ class Data_Utility(data.Dataset):
         self.data = processed_dict['data_m']['data']
         self.labels = processed_dict['data_m']['labels']
         self.label_meta = processed_dict['dict_m']['label_meta']
-        if self.decoder_ready:
-            # fix the labels. during data collection, the labels where taken as unique id per level.
-            # to make all levels unique here for the decoder to work, we need to make them sequential
-            label2id = {}
-            # get the max number of labels per level
-            max_levels = max([len(label) for label in self.labels])
-            ct  = 1
-            for i in range(max_levels):
-                labels_in_level = set([label[i] for label in self.labels])
-                for lb in labels_in_level:
-                    # add a special structure so it can be recovered later
-                    label2id['l{}_{}'.format(i,lb)] = ct
-                    ct +=1
-            self.decoder_labels = []
-            for labels in self.labels:
-                row_labels = [0] # start with the go label
-                for i, label in enumerate(labels):
-                    row_labels.append(label2id['l{}_{}'.format(i,label)])
-                self.decoder_labels.append(row_labels)
-            self.decoder_num_labels = ct
+        self.data_indexes = processed_dict['data_m']['indexes']
+        self.data_path = processed_dict['data_m']['data_path']
+        self.y_class2id = processed_dict['data_m']['y_class2id']
+        self.y_id2class = {cl:{v:k for k,v in dt.items()} for cl,dt in self.y_class2id.items()}
+        #self.y_id2class = {v:k for k,v in self.y_class2id.items()} not possible as its a two level class
+        # fix the labels. during data collection, the labels where taken as unique id per level.
+        # to make all levels unique here for the decoder to work, we need to make them sequential
+        label2id = {}
+        # save a hierarchy of decoder levels
+        taxonomy = {}
+        # get the max number of labels per level
+        max_levels = max([len(label) for label in self.labels])
+        ct  = 1
+        for i in range(max_levels):
+            labels_in_level = set([label[i] for label in self.labels])
+            for lb in labels_in_level:
+                # add a special structure so it can be recovered later
+                label2id['l{}_{}'.format(i,lb)] = ct
+                ct +=1
+        self.decoder_labels = []
+        for labels in self.labels:
+            row_labels = [0] # start with the go label
+            for i, label in enumerate(labels):
+                row_labels.append(label2id['l{}_{}'.format(i,label)])
+            self.decoder_labels.append(row_labels)
+        self.decoder_num_labels = ct
+        # build the taxonomy
+        taxonomy[0] = set()
+        for labels in self.labels:
+            new_dec_labels = [label2id['l{}_{}'.format(level,label)] for level,label in enumerate(labels)]
+            parent = 0
+            for dec_label in new_dec_labels:
+                if parent not in taxonomy:
+                    taxonomy[parent] = set()
+                taxonomy[parent].add(dec_label)
+                parent = dec_label
+        self.taxonomy = taxonomy
+        self.label2id = label2id
+        self.id2label = {v:k for k,v in label2id.items()}
 
         self.split_indices()
 
     def split_indices(self):
-        ## Split indices for train test
-        all_indices = range(len(self.data))
-        shuffled = random.sample(all_indices, len(all_indices))
-        num_train = int(np.floor(len(all_indices) * self.split_ratio))
-        self.train_indices = shuffled[:num_train]
-        self.test_indices = shuffled[num_train:]
+        ## TODO: evenly split training and test so that test has atleast n examples of the categories
+        end_labels = [labels[-1] for labels in self.labels]
+        assert len(end_labels) == len(self.data_indexes)
+        #print(len(end_labels))
+        #print(len(set(end_labels)))
+        label2rowid = {}
+        for i,label in enumerate(end_labels):
+            if label not in label2rowid:
+                label2rowid[label] = []
+            label2rowid[label].append(self.data_indexes[i])
+        # shuffle within labelids
+        for i,label in enumerate(end_labels):
+            label2rowid[label] = random.sample(label2rowid[label], len(label2rowid[label]))
+        train_indices = [v[:int(np.floor(len(v) * self.split_ratio))] for k,v in label2rowid.items()]
+        train_indices = [v for k in train_indices for v in k]
+        test_indices = [v[int(np.floor(len(v) * self.split_ratio)):] for k,v in label2rowid.items()]
+        test_indices = [v for k in test_indices for v in k]
+        # make sure no data bleeding has happened
+        assert len(set(train_indices).intersection(set(test_indices))) == 0
 
-    def load_embedding(self,embedding_file='', embedding_saved='', embedding_dim=300, exp_name=''):
+        self.train_indices = random.sample(train_indices, len(train_indices))
+        self.test_indices = random.sample(test_indices, len(test_indices))
+        ## Split indices for train test
+        ##all_indices = range(len(self.data))
+        ##shuffled = random.sample(all_indices, len(all_indices))
+        ##num_train = int(np.floor(len(all_indices) * self.split_ratio))
+        ##self.train_indices = shuffled[:num_train]
+        ##self.test_indices = shuffled[num_train:]
+
+    def load_embedding(self,embedding_file='', embedding_saved='', embedding_dim=300, data_path=''):
         """
         Initialize the embedding from pre-trained vectors
         :param embedding_file: pre-trained vector file, eg glove.txt
         :param embedding_saved: file to save the embeddings
         :param embedding_dim: dimensions, eg 300
-        :param exp_name: experiment name
+        :param data_path: data path
         :return: embedding matrix
         """
 
@@ -268,7 +311,7 @@ class Data_Utility(data.Dataset):
         word_dict = self.word2id
 
         parent_dir = dirname(dirname(dirname(abspath(__file__))))
-        save_path_base = parent_dir + '/saved/' + exp_name
+        save_path_base = parent_dir + '/data/' + data_path
         if not os.path.exists(save_path_base):
             os.makedirs(save_path_base)
         emb_saved_full_path = save_path_base + embedding_saved
@@ -314,51 +357,45 @@ class Data_Utility(data.Dataset):
         return embeddings
 
 
-    def save(self):
-        ## save preprocessed entities
-        pass
-
     def __getitem__(self, index):
         ## return single training row for torch.DataLoader
         if self.data_mode == 'train':
             rows = self.train_indices
         else:
             rows = self.test_indices
-        data = self.data[rows[index]]
-
-        data = [self.word2id[word] for word in data]
-
-        # data = [self.word2id[word] for word in data]
-        #labels = self.labels[rows[index]]
-
-        if type(data[0]) != list:
-            data = [[self.word2id[word] if word in self.word2id
-                else self.word2id[constants.UNK_WORD]
-                for word in data]]
-        else:
-            num_sent = len(data)
-            sents_len = [len(sent) for sent in data]
-            max_sent_len = max(sents_len)
-            matrix = np.zeros((num_sent, max_sent_len))
-
-            for i, sent in enumerate(data):
-                matrix[i][:sents_len[i]] = [self.word2id[word] if word in self.word2id
-                                            else self.word2id[constants.UNK_WORD]
-                                            for word in sent]
-            # data = [self.word2id[word] for sent in data for word in sent]
-            data = matrix
-
-        labels = self.labels[rows[index]]
+        row_index = rows[index]
+        data = self.data[row_index]
+        data = [self.word2id[word] if word in self.word2id else self.word2id[constants.UNK_WORD]
+                for word in data]
+        labels = self.labels[row_index]
         if self.decoder_ready:
-            labels = self.decoder_labels[rows[index]]
+            labels = self.decoder_labels[row_index]
+        if self.level != -1:
+            labels = self.labels[row_index]
+            labels = [0, labels[self.level]]
         data = torch.LongTensor(data)
-        return data, labels
+        return data, labels, [row_index]
 
     def __len__(self):
         if self.data_mode == 'train':
             return len(self.train_indices)
         else:
             return len(self.test_indices)
+
+    def calculate_weights(self, level=0):
+        """
+        Calculate class weights to correct for class imbalance
+        :return:
+        """
+        if self.decoder_ready:
+            all_labels = [lb[level] for lb in self.decoder_labels]
+        else:
+            all_labels = [lb[level] for lb in self.labels]
+        label_count = Counter(all_labels)
+        min_label_count = min(label_count.items(), key=lambda a: a[1])[1]
+        label_weights = [min_label_count / count for label, count in sorted(label_count.items())]
+        return label_weights
+
 
 ### Helper function
 def collate_fn(data):
@@ -376,8 +413,8 @@ def collate_fn(data):
         return padded_rows, lengths
 
     data.sort(key=lambda x: len(x[0]), reverse=True)
-    src_data, src_labels = zip(*data)
+    src_data, src_labels, src_row_indexes = zip(*data)
     src_data, src_lengths = merge(src_data)
 
-    return src_data, src_lengths, src_labels
+    return src_data, src_lengths, src_labels, src_row_indexes
 
