@@ -240,6 +240,7 @@ class SimpleMLPDecoder(nn.Module):
         self.linear = nn.Linear(embedding_dim * mult_factor, mlp_hidden_dim)
         self.linear2 = nn.Linear(mlp_hidden_dim, label_size)
         self.relu = nn.ReLU()
+        self.tanh = nn.Tanh()
         self.dropout = nn.Dropout(dropout)
         #self.linear1 = nn.Linear(embedding_dim + cat_emb_dim, self.label_sizes[0])
         #self.linear2 = nn.Linear(embedding_dim + cat_emb_dim, self.label_sizes[1])
@@ -339,15 +340,18 @@ class SimpleMLPDecoder(nn.Module):
             raise NotImplementedError("attention type not implemented")
         if use_prev_emb:
             doc_emb = torch.cat((prev_emb, doc_emb), 1)
-        x = self.linear(doc_emb)
-        hidden_rep = self.dropout(x)
-        x = self.relu(hidden_rep)
-        x = self.linear2(x)
-        logits = self.dropout(x)
+        doc_emb = doc_emb.view(doc_emb.size(0), -1)
+        hidden_rep = self.tanh(self.linear(self.dropout(doc_emb)))
+        logits = self.linear2(self.dropout(hidden_rep))
+        #x = self.linear(doc_emb)
+        #hidden_rep = self.dropout(x)
+        #x = self.relu(hidden_rep)
+        #x = self.linear2(x)
+        #logits = self.dropout(x)
         #x = self.linears[level](x)
         #logits = self.temp_logsoftmax(x, self.temperature)
 
-        return logits, attn, hidden_rep
+        return logits, attn, hidden_rep.view(prev_emb.size())
 
     def batchNLLLoss(self, src, src_lengths, categories, tf_ratio=1.0, loss_focus=[],
                      loss_weights=None, renormalize='level', max_categories=3, batch_masking=False,
@@ -372,7 +376,7 @@ class SimpleMLPDecoder(nn.Module):
         encoder_outputs, encoder_lens = self.encode(src, src_lengths)
         hidden_rep = self.init_hidden(src.size(0))
         cat_len = categories.size(1) - 1
-        assert cat_len == max_categories
+        # assert cat_len == max_categories
         out = None
         out_p = None
         #pdb.set_trace()
@@ -382,10 +386,11 @@ class SimpleMLPDecoder(nn.Module):
         predictions = []
         correct_confs = []
         incorrect_confs = []
+        levels = len(self.label_sizes)
 
         use_tf = True if (random.random() < tf_ratio) else False
         if use_tf:
-            for i in range(cat_len):
+            for i in range(levels):
                 inp_cat = categories[:, i]
                 if torch.max(inp_cat).data.cpu().numpy() > self.total_cats:
                     print(inp_cat)
@@ -400,9 +405,9 @@ class SimpleMLPDecoder(nn.Module):
                                                      use_prev_emb=self.prev_emb,attn_mask=attn_mask)
                 if renormalize:
                     if renormalize == 'level':
-                        out = self.mask_renormalize(out,i)
+                        out = self.mask_level(out,i)
                     elif renormalize == 'category':
-                        out = self.mask_renormalize_level(out,inp_cat)
+                        out = self.mask_category(out,inp_cat)
                     else:
                         raise NotImplementedError("renormalization scheme not implemented")
                 out = self.temp_logsoftmax(out, self.temperature)
@@ -438,7 +443,7 @@ class SimpleMLPDecoder(nn.Module):
             else:
                 batch_mask = None
             last_p = 1
-            for i in range(cat_len):
+            for i in range(levels):
                 #pdb.set_trace()
                 if i == 0:
                     inp_cat = categories[:, i]  # starting token
@@ -460,9 +465,9 @@ class SimpleMLPDecoder(nn.Module):
                                                      use_prev_emb=self.prev_emb,attn_mask=attn_mask)
                 if renormalize:
                     if renormalize == 'level':
-                        out = self.mask_renormalize(out,i)
+                        out = self.mask_level(out,i)
                     elif renormalize == 'category':
-                        out = self.mask_renormalize_level(out,inp_cat)
+                        out = self.mask_category(out,inp_cat)
                     else:
                         raise NotImplementedError("renormalization scheme not implemented")
                 out = self.temp_logsoftmax(out, self.temperature)
@@ -506,7 +511,7 @@ class SimpleMLPDecoder(nn.Module):
 
         return loss, accs, attns, predictions, correct_labels, correct_confs, incorrect_confs
 
-    def mask_renormalize(self, logits, level=0):
+    def mask_level(self, logits, level=0):
         """
         Given level, mask out all the other level classes
         :param parent_class_batch: parent class ID in batch, batch x 1
@@ -528,7 +533,7 @@ class SimpleMLPDecoder(nn.Module):
         logits.data.masked_fill_(mask, -float('inf'))
         return logits
 
-    def mask_renormalize_level(self, logits, parent_class_batch):
+    def mask_category(self, logits, parent_class_batch):
         """
         Given a parent class, logits and taxonomy, mask the classes which are not in child
         :param logits:

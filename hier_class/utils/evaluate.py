@@ -30,7 +30,7 @@ parser.add_argument("-n","--num", type=int, help="number of evals (-1 for all)",
 
 args = parser.parse_args()
 
-def evaluate_test(model, test_file_loc, output_file_loc, model_params, layers=3):
+def evaluate_test(model, data, test_file_loc, output_file_loc, model_params):
     """
     Evaluate and print metrics
     :param model: Model (use model.eval() to disable dropout / batchnorm)
@@ -40,6 +40,7 @@ def evaluate_test(model, test_file_loc, output_file_loc, model_params, layers=3)
     :param layers: default 3
     :return: None
     """
+    layers = model_params['levels']
     test_file = pd.read_csv('../../data/' + test_file_loc)
     for i in range(model_params['levels']):
         test_file['pred_{}'.format(i)] = ''
@@ -67,7 +68,7 @@ def evaluate_test(model, test_file_loc, output_file_loc, model_params, layers=3)
         src_len = [text_len]
         labels = [0]
         #pdb.set_trace()
-        labels.extend([data.label2id['l{}_{}'.format(l,data.y_class2id['l'+str(l+1)][row['l{}'.format(l+1)]])]
+        labels.extend([data.label2id['l{}_{}'.format(l,data.y_class2id['l'+str(l+1)][str(row['l{}'.format(l+1)])])]
                        for l in range(model_params['levels'])])
         labels = Variable(torch.LongTensor([labels]), volatile=True)
         if model_params['use_gpu']:
@@ -88,14 +89,19 @@ def evaluate_test(model, test_file_loc, output_file_loc, model_params, layers=3)
         #print(preds)
         #print(correct_confs)
         #print(incorrect_confs)
-        preds = [data.y_id2class['l'+str(indx+1)][int(data.id2label[p[0]].split('_')[1])] for indx, p in enumerate(preds)]
+        preds = [str(data.y_id2class['l'+str(indx+1)][int(data.id2label[p[0]].split('_')[1])]) for indx, p in enumerate(preds)]
         for idx, pred in enumerate(preds):
             test_file.at[i,'pred_{}'.format(idx)] = pred
         test_file.at[i,'recon_text'] = ' '.join(recon_text)
         ## Store attentions
         row_attentions = []
         for idx, attn in enumerate(attns):
-            attn = attn.data.cpu().numpy()
+            if type(attn) == list:
+                attn = np.array([a.data.cpu().numpy() for a in attn])
+            elif type(attn) == Variable:
+                attn = attn.data.cpu().numpy()
+            else:
+                attn = []
             attn = np.squeeze(attn, axis=1)
             row_attentions.append(attn)
         pb.update(1)
@@ -106,11 +112,13 @@ def evaluate_test(model, test_file_loc, output_file_loc, model_params, layers=3)
     pb.close()
     # Calculate Metrics
     for layer in range(layers):
+        test_file['l{}'.format(layer+1)] = test_file['l{}'.format(layer+1)].astype(str)
+        test_file['pred_{}'.format(layer)] = test_file['pred_{}'.format(layer)].astype(str)
         acc = np.mean(test_file['l{}'.format(layer+1)] == test_file['pred_{}'.format(layer)])
         sk_acc = accuracy_score(test_file['l{}'.format(layer+1)], test_file['pred_{}'.format(layer)])
-        sk_rec = recall_score(test_file['l{}'.format(layer+1)], test_file['pred_{}'.format(layer)])
-        sk_f1 = f1_score(test_file['l{}'.format(layer+1)], test_file['pred_{}'.format(layer)])
-        sk_precision = precision_score(test_file['l{}'.format(layer+1)], test_file['pred_{}'.format(layer)])
+        sk_rec = recall_score(test_file['l{}'.format(layer+1)], test_file['pred_{}'.format(layer)], average='macro')
+        sk_f1 = f1_score(test_file['l{}'.format(layer+1)], test_file['pred_{}'.format(layer)], average='macro')
+        sk_precision = precision_score(test_file['l{}'.format(layer+1)], test_file['pred_{}'.format(layer)], average='macro')
         print("Layer {} Metrics".format(layer+1))
         print("Acc {}, Sk_accuracy {}, Recall {}, F1 Score {}, Precision {}".format(acc, sk_acc, sk_rec, sk_f1, sk_precision))
 
@@ -142,7 +150,7 @@ if __name__ == '__main__':
     model.taxonomy = data.taxonomy
 
     model.eval()
-    evaluate_test(model, args.file, args.output, model_params)
+    evaluate_test(model, data, args.file, args.output, model_params)
 
 
 

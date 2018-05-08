@@ -15,6 +15,7 @@ import numpy as np
 import pandas
 from hier_class.utils import constants
 from collections import Counter
+import re
 import logging
 logging.basicConfig(
     level=logging.INFO,
@@ -23,7 +24,8 @@ logging.basicConfig(
 import pdb
 
 class Data_Utility(data.Dataset):
-    def __init__(self, data_path='', train_test_split=0.8, decoder_ready=False,max_vocab=-1,max_word_doc=-1, level=-1):
+    def __init__(self, data_path='', train_test_split=0.8, decoder_ready=False,max_vocab=-1,max_word_doc=-1, level=-1,
+                 levels=3):
         """
 
         :param data_path:
@@ -43,6 +45,7 @@ class Data_Utility(data.Dataset):
         self.max_vocab = max_vocab
         self.max_word_doc = max_word_doc
         self.level = level # select which levels to choose. if -1, then choose all
+        self.levels = level # max number of levels to classify, default 3
         parent_dir = dirname(dirname(dirname(abspath(__file__))))
         self.save_path_base = parent_dir + '/data/' + data_path
         if not os.path.exists(self.save_path_base):
@@ -64,14 +67,22 @@ class Data_Utility(data.Dataset):
         y_classes = []
         text_data = []
         data_indexes = []
+        y_class2id = {}
+        full_data_csv_path = ''
 
         if data_type == 'WOS':
             ## Web of science data
+            i = 0
             with open(data_loc + '/X.txt') as fp:
                 for line in fp:
-                    l_ = self.tokenize(line.strip(), mode=tokenization)
-                    items.update(l_)
-                    text_data.append(l_)
+                    text = self.tokenize(line.strip(), mode=tokenization)
+                    items.update(text)
+                    ## prune docs by max words
+                    if self.max_word_doc > 0 and len(text) > self.max_word_doc:
+                        text = text[:self.max_word_doc]
+                    text_data.append(text)
+                    data_indexes.append(i)
+                    i+=1
             dict_m['word2id'], dict_m['id2word'] = self.assign_wordids(items, self.special_tokens)
             ## add the level1, level2 and level3 in per array
 
@@ -89,6 +100,12 @@ class Data_Utility(data.Dataset):
                     y_3.append(int(line.strip()))
             for i in range(len(y_1)):
                 y_classes.append([y_1[i],y_2[i],y_3[i]])
+            # since classes are already in id format
+            y_class2id = {'l1': {s:s for s in set(y_1)},
+                          'l2': {s:s for s in set(y_2)},
+                          'l3': {s:s for s in set(y_3)}}
+
+
         elif data_type == 'WIKI':
             full_data_csv_path = data_loc + '/' + file_name
             df = pandas.read_csv(full_data_csv_path)
@@ -123,9 +140,9 @@ class Data_Utility(data.Dataset):
                 y_classes.append([l_1, l_2, l_3])
                 data_indexes.append(i)
 
-            data_m['y_class2id'] = y_class2id
-            dict_m['word2id'], dict_m['id2word'] = self.assign_wordids(items, self.special_tokens)
-            data_m['data_path'] = full_data_csv_path
+        data_m['y_class2id'] = y_class2id
+        dict_m['word2id'], dict_m['id2word'] = self.assign_wordids(items, self.special_tokens)
+        data_m['data_path'] = full_data_csv_path
 
         assert len(y_classes) == len(text_data)
         data_m['data'] = text_data
@@ -174,13 +191,15 @@ class Data_Utility(data.Dataset):
         return max([len(p) - 1 for p in self.labels])
 
 
-    def tokenize(self, sent, mode='word'):
+    def tokenize(self, sent, mode='word', clean=False):
         """
         tokenize sentence based on mode
         :sent - sentence
         :param mode: word/char
         :return: splitted array
         """
+        if clean:
+            sent = text_cleaner(sent)
         if mode == 'word':
             return word_tokenize(sent)
         if mode == 'char':
@@ -418,3 +437,32 @@ def collate_fn(data):
 
     return src_data, src_lengths, src_labels, src_row_indexes
 
+## Text cleaning function
+def text_cleaner(text):
+    text = text.replace(".", "")
+    text = text.replace("[", " ")
+    text = text.replace(",", " ")
+    text = text.replace("]", " ")
+    text = text.replace("(", " ")
+    text = text.replace(")", " ")
+    text = text.replace("\"", "")
+    text = text.replace("-", "")
+    text = text.replace("=", "")
+    rules = [
+        {r'>\s+': u'>'},  # remove spaces after a tag opens or closes
+        {r'\s+': u' '},  # replace consecutive spaces
+        {r'\s*<br\s*/?>\s*': u'\n'},  # newline after a <br>
+        {r'</(div)\s*>\s*': u'\n'},  # newline after </p> and </div> and <h1/>...
+        {r'</(p|h\d)\s*>\s*': u'\n\n'},  # newline after </p> and </div> and <h1/>...
+        {r'<head>.*<\s*(/head|body)[^>]*>': u''},  # remove <head> to </head>
+        {r'<a\s+href="([^"]+)"[^>]*>.*</a>': r'\1'},  # show links instead of texts
+        {r'[ \t]*<[^<]*?/?>': u''},  # remove remaining tags
+        {r'^\s+': u''}  # remove spaces at the beginning
+    ]
+    for rule in rules:
+        for (k, v) in rule.items():
+            regex = re.compile(k)
+            text = regex.sub(v, text)
+        text = text.rstrip()
+        text = text.strip()
+    return text.lower()
