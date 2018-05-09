@@ -225,7 +225,7 @@ def train(_config, _run):
                                             renormalize=_config['renormalize'])
             loss.backward()
             #m_params = [p for p in model.parameters() if p.requires_grad]
-            #nn.utils.clip_grad_norm(m_params, _config['clip_grad'])
+            nn.utils.clip_grad_norm(m_params, _config['clip_grad'])
             optimizer.step()
             stats.update_train(loss.data[0], accs)
             if _config['debug']:

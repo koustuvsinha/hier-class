@@ -130,15 +130,71 @@ def wos_variation_8():
     single_attention = True
     attn_penalty = True
 
+@ex.named_config
+def wos_variation_9():
+    exp_name = 'self_attention_new_single_low'
+    n_heads = [8,8,8]
+    prev_emb = False
+    attention_type = 'self'
+    embedding_dim = 100
+    mlp_hidden_dim = 100
+    cat_emb_dim = 100
+    da = 200
+    single_attention = True
+    attn_penalty = True
+    lr_patience=10
+
+@ex.named_config
+def wos_variation_10():
+    exp_name = 'self_attention_high'
+    n_heads = [15,15,15]
+    prev_emb = False
+    attention_type = 'self'
+    cat_emb_dim = 300
+    da = 400
+    single_attention = True
+    attn_penalty = True
+    lr_patience = 10
+
+@ex.named_config
+def wos_variation_11():
+    exp_name = 'wos_maxpool'
+    prev_emb = True
+    attention_type = 'no_attention'
+
+@ex.named_config
+def wos_variation_12():
+    exp_name = 'wos_maxpool_sgd'
+    prev_emb = True
+    attention_type = 'no_attention'
+    optimizer='sgd'
+    lr=0.06
+    lr_patience=30
+    epochs=30
+
+@ex.named_config
+def wos_variation_13():
+    exp_name = 'wos_self_sgd'
+    prev_emb = False
+    attention_type = 'self'
+    optimizer='sgd'
+    lr=0.1
+    cat_emb_dim = 300
+    single_attention = True
+    attn_penalty = True
+    lr_patience=30
+    epochs=30
+
 ### DBpedia experiments
 
 @ex.named_config
 def dbp_variation_1():
     exp_name = 'db_self_attention_new_single'
-    n_heads = [8,8,8]
+    n_heads = [2,2,2]
     prev_emb = False
     attention_type = 'self'
     cat_emb_dim = 300
+    da = 150
     single_attention = True
     attn_penalty = True
     clean = True
@@ -147,6 +203,21 @@ def dbp_variation_1():
     file_name = 'df_small_train.csv'
     test_file_name = 'df_small_test.csv'
     test_output_name = 'df_small_outp.csv'
+    levels = 3
+    batch_size = 32
 
+
+@ex.named_config
+def dbp_variation_2():
+    exp_name = 'db_no_attention'
+    prev_emb = True
+    attention_type = 'no_attention'
+    clean = True
+    data_loc = '/home/ml/ksinha4/mlp/hier-class/data/'
+    data_path = 'db_sm_train_clean'
+    file_name = 'df_small_train.csv'
+    test_file_name = 'df_small_test.csv'
+    test_output_name = 'df_small_outp.csv'
+    levels = 3
 
 

@@ -226,10 +226,11 @@ class SimpleMLPDecoder(nn.Module):
             if fix_embedding:
                 self.embedding.requires_grad = False
         # for attention to work, embedding_dim and category embedding dim should be the same
-        if attention_type != 'self' and (embedding_dim * 2) != cat_emb_dim:
-            print(embedding_dim)
-            print(cat_emb_dim)
-            raise RuntimeError("For scaled attention to work, embedding_dim and category embedding dim should be the same or double for bidirectional")
+        if attention_type != 'self':
+            if (embedding_dim * 2) != cat_emb_dim:
+                print(embedding_dim)
+                print(cat_emb_dim)
+                raise RuntimeError("For scaled attention to work, embedding_dim and category embedding dim should be the same or double for bidirectional")
         else:
             assert embedding_dim == cat_emb_dim
         self.category_embedding = nn.Embedding(

@@ -60,7 +60,7 @@ def evaluate_test(model, data, test_file_loc, output_file_loc, model_params, tot
     for i,row in test_file.iterrows():
         text = row['text']
         text = text.lower()
-        text = data.tokenize(text,model_params['tokenization'])
+        text = data.tokenize(text)
         text = [data.word2id[w] if w in data.word2id else data.word2id[constants.UNK_WORD] for w in text]
         recon_text = [data.id2word[str(w)] for w in text]
         #print(text)
@@ -148,7 +148,9 @@ if __name__ == '__main__':
         max_vocab=model_params['max_vocab'],
         max_word_doc=model_params['max_word_doc'],
         level = model_params['level'],
-        decoder_ready=model_params['decoder_ready']
+        decoder_ready=model_params['decoder_ready'],
+        tokenization=model_params['tokenization'],
+        clean=model_params['clean']
     )
     data.load(model_params['data_type'], model_params['data_loc'], model_params['file_name'])
     model.taxonomy = data.taxonomy
