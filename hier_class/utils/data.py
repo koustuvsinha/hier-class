@@ -25,7 +25,7 @@ import pdb
 
 class Data_Utility(data.Dataset):
     def __init__(self, data_path='', train_test_split=0.8, decoder_ready=False,max_vocab=-1,max_word_doc=-1, level=-1,
-                 levels=3):
+                 levels=3, tokenization='word', clean=False):
         """
 
         :param data_path:
@@ -46,12 +46,14 @@ class Data_Utility(data.Dataset):
         self.max_word_doc = max_word_doc
         self.level = level # select which levels to choose. if -1, then choose all
         self.levels = level # max number of levels to classify, default 3
+        self.tokenization = tokenization
+        self.clean = clean
         parent_dir = dirname(dirname(dirname(abspath(__file__))))
         self.save_path_base = parent_dir + '/data/' + data_path
         if not os.path.exists(self.save_path_base):
             os.makedirs(self.save_path_base)
 
-    def preprocess(self, data_type='', data_loc='', file_name='full_docs_2.csv', tokenization='word'):
+    def preprocess(self, data_type='', data_loc='', file_name='full_docs_2.csv'):
         """
         Given data type and location, load and preprocess in an uniform format
         Also create dynamic dictionaries here
@@ -75,7 +77,7 @@ class Data_Utility(data.Dataset):
             i = 0
             with open(data_loc + '/X.txt') as fp:
                 for line in fp:
-                    text = self.tokenize(line.strip(), mode=tokenization)
+                    text = self.tokenize(line.strip())
                     items.update(text)
                     ## prune docs by max words
                     if self.max_word_doc > 0 and len(text) > self.max_word_doc:
@@ -129,9 +131,9 @@ class Data_Utility(data.Dataset):
                 if '<sent>' in text:
                     # data has been sentence tokenized
                     text = text.split('<sent>')
-                    text = [self.tokenize(str(t), mode=tokenization) for t in text]
+                    text = [self.tokenize(str(t)) for t in text]
                 else:
-                    text = self.tokenize(str(text), mode=tokenization)
+                    text = self.tokenize(str(text))
                 ## prune docs by max words
                 if self.max_word_doc > 0 and len(text) > self.max_word_doc:
                     text = text[:self.max_word_doc]
@@ -173,7 +175,7 @@ class Data_Utility(data.Dataset):
             'dict_m' : dict_m,
             'data_m' : data_m
         }
-        json.dump(pd, open(self.save_path_base + '/{}_processed_{}.json'.format(data_type, tokenization), 'w'))
+        json.dump(pd, open(self.save_path_base + '/{}_processed_{}.json'.format(data_type, self.tokenization), 'w'))
         return pd
 
     def get_level_labels(self, level=0):
@@ -191,18 +193,18 @@ class Data_Utility(data.Dataset):
         return max([len(p) - 1 for p in self.labels])
 
 
-    def tokenize(self, sent, mode='word', clean=False):
+    def tokenize(self, sent):
         """
         tokenize sentence based on mode
         :sent - sentence
         :param mode: word/char
         :return: splitted array
         """
-        if clean:
+        if self.clean:
             sent = text_cleaner(sent)
-        if mode == 'word':
+        if self.tokenization == 'word':
             return word_tokenize(sent)
-        if mode == 'char':
+        if self.tokenization == 'char':
             return sent.split()
 
     def assign_wordids(self, words, special_tokens=None):
@@ -229,12 +231,12 @@ class Data_Utility(data.Dataset):
         id2word = {v:k for k,v in word2id.items()}
         return word2id, id2word
 
-    def load(self, data_type='', data_loc='', file_name='', tokenization='word'):
+    def load(self, data_type='', data_loc='', file_name=''):
         ## Load previously preprocessed data, and add to the object
-        save_loc = self.save_path_base + '/{}_processed_{}.json'.format(data_type, tokenization)
+        save_loc = self.save_path_base + '/{}_processed_{}.json'.format(data_type, self.tokenization)
         if not os.path.exists(save_loc):
             logging.info("Preprocessing...")
-            processed_dict = self.preprocess(data_type, data_loc, file_name, tokenization)
+            processed_dict = self.preprocess(data_type, data_loc, file_name)
         else:
             logging.info("Loading previously preprocessed data...")
             processed_dict = json.load(open(save_loc))

@@ -19,18 +19,21 @@ logging.basicConfig(
     format='%(asctime)s - %(levelname)s - %(message)s'
 )
 
-## arguments
-parser = argparse.ArgumentParser()
-parser.add_argument("-e","--exp", type=str, help="experiment to load", default="wiki_normalize_experiment2018-04-21_18:43:17")
-parser.add_argument("-m","--model", type=str, help="model to load", default="model_epoch_0_step_0.mod")
-parser.add_argument("-f","--file", type=str, help="testing file to load", default="full_docs_2_test.csv")
-parser.add_argument("-o","--output", type=str, help="file to write the output", default="output.csv")
-parser.add_argument("-c","--confidence", type=float, help="confidence to measure pruned accuracy", default=0.0)
-parser.add_argument("-n","--num", type=int, help="number of evals (-1 for all)", default=-1)
+def get_args():
 
-args = parser.parse_args()
+    ## arguments
+    parser = argparse.ArgumentParser()
+    parser.add_argument("-e","--exp", type=str, help="experiment to load", default="wiki_normalize_experiment2018-04-21_18:43:17")
+    parser.add_argument("-m","--model", type=str, help="model to load", default="model_epoch_0_step_0.mod")
+    parser.add_argument("-f","--file", type=str, help="testing file to load", default="full_docs_2_test.csv")
+    parser.add_argument("-o","--output", type=str, help="file to write the output", default="output.csv")
+    parser.add_argument("-c","--confidence", type=float, help="confidence to measure pruned accuracy", default=0.0)
+    parser.add_argument("-n","--num", type=int, help="number of evals (-1 for all)", default=-1)
 
-def evaluate_test(model, data, test_file_loc, output_file_loc, model_params):
+    args = parser.parse_args()
+    return args
+
+def evaluate_test(model, data, test_file_loc, output_file_loc, model_params, total=-1):
     """
     Evaluate and print metrics
     :param model: Model (use model.eval() to disable dropout / batchnorm)
@@ -48,7 +51,6 @@ def evaluate_test(model, data, test_file_loc, output_file_loc, model_params):
     test_file['recon_text'] = ''
     test_docs = []
     logging.info("Starting prediction ...")
-    total = args.num
     if total == -1:
         total = len(test_file)
     pb = tqdm(total=total)
@@ -98,11 +100,12 @@ def evaluate_test(model, data, test_file_loc, output_file_loc, model_params):
         for idx, attn in enumerate(attns):
             if type(attn) == list:
                 attn = np.array([a.data.cpu().numpy() for a in attn])
+                attn = np.squeeze(attn, axis=0)
             elif type(attn) == Variable:
                 attn = attn.data.cpu().numpy()
+                attn = np.squeeze(attn, axis=1)
             else:
                 attn = []
-            attn = np.squeeze(attn, axis=1)
             row_attentions.append(attn)
         pb.update(1)
         attentions.append(row_attentions)
@@ -128,6 +131,7 @@ def evaluate_test(model, data, test_file_loc, output_file_loc, model_params):
 
 if __name__ == '__main__':
     ## loading the model
+    args = get_args()
     logging.info("Loading the model")
     model_params = json.load(open('../../saved/'+args.exp + '/parameters.json','r'))
     model = decoders.SimpleMLPDecoder(**model_params)
@@ -146,7 +150,7 @@ if __name__ == '__main__':
         level = model_params['level'],
         decoder_ready=model_params['decoder_ready']
     )
-    data.load(model_params['data_type'], model_params['data_loc'], model_params['file_name'], model_params['tokenization'])
+    data.load(model_params['data_type'], model_params['data_loc'], model_params['file_name'])
     model.taxonomy = data.taxonomy
 
     model.eval()

@@ -8,7 +8,6 @@ from torch.autograd import Variable
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 import numpy as np
 import logging
-from sacred import Experiment
 from pprint import pprint, pformat
 import logging
 from tensorboardX import SummaryWriter
@@ -30,72 +29,9 @@ from hier_class.utils import model_utils as mu
 from hier_class.utils.stats import Statistics
 from hier_class.utils.evaluate import evaluate_test
 import pdb
+from hier_class.config import *
 
-ex = Experiment()
-
-@ex.config
-def exp_config():
-    gpu = 0
-    use_gpu = True
-    exp_name = 'wos_norm_level_self'
-    embedding_dim = 300
-    mlp_hidden_dim = 300
-    use_embedding = False
-    fix_embeddings = False
-    embedding_file = '/home/ml/ksinha4/mlp/hier-class/data/glove.6B.100d.txt'
-    embedding_saved = 'glove_embeddings.mod'
-    load_model = False
-    load_model_path = ''
-    save_name = 'model_epoch_{}_step_{}.mod'
-    optimizer = 'rmsprop'
-    lr = 1e-3
-    lr_factor = 0.1
-    lr_threshold = 1e-4
-    lr_patience = 3
-    clip_grad = 0.5
-    momentum = 0.9
-    dropout = 0.2
-    log_interval = 200
-    save_interval = 1000
-    train_test_split = 0.9
-    data_type = 'WIKI'
-    data_loc = '/home/ml/ksinha4/mlp/hier-class/data/'
-    data_path = 'wos_train_clean'
-    file_name = 'wos_data_train.csv'
-    test_file_name = 'wos_data_test.csv'
-    test_output_name = 'wos_data_output.csv'
-    #data_loc = '/home/ml/ksinha4/datasets/data_WOS/WebOfScience/WOS46985'
-    tokenization = 'word'
-    batch_size = 64
-    epochs = 20
-    level = -1
-    levels = 2
-    cat_emb_dim = 600
-    tf_ratio=1
-    tf_anneal=1
-    validation_tf = 0
-    weight_decay=1e-4
-    temperature = 1
-    loss_focus = [1,1,1]
-    label_weights = [1,1,1]
-    dynamic_dictionary = True
-    max_vocab = 100000
-    max_word_doc = -1
-    decoder_ready = True
-    prev_emb = True
-    n_heads = [3,3,3]
-    baseline = False # either False, or fast / bilstm
-    debug = False
-    attn_penalty_coeff = 0
-    d_k = 64
-    d_v = 64
-    da = 350
-    seed = 1111
-    attention_type = 'self'
-    use_attn_mask = False # use attention mask for scaled if required
-    renormalize = 'level' # level -> for level masking, category -> for tree masking
-    single_attention = True # for scaled attention use only one attention layer for all
-
+# new
 
 @ex.automain
 def train(_config, _run):
@@ -116,13 +52,15 @@ def train(_config, _run):
         max_word_doc=_config['max_word_doc'],
         level = _config['level'],
         decoder_ready=_config['decoder_ready'],
-        levels=_config['levels']
+        levels=_config['levels'],
+        tokenization=_config['tokenization'],
+        clean=_config['clean']
     )
     max_categories = _config['levels']
     if _config['level'] != -1:
         max_categories = 1
     logging.info("Loading data")
-    data.load(_config['data_type'],_config['data_loc'],_config['file_name'],_config['tokenization'])
+    data.load(_config['data_type'],_config['data_loc'],_config['file_name'])
     test_data = copy.deepcopy(data)
     test_data.data_mode = 'test'
 
