@@ -176,6 +176,7 @@ class SimpleMLPDecoder(nn.Module):
                  use_embedding=False,
                  fix_embedding=False,
                  single_attention=False,
+                 attn_penalty=True,
                  **kwargs):
         """
 
@@ -213,6 +214,7 @@ class SimpleMLPDecoder(nn.Module):
         self.gpu = gpu
         self.prev_emb = prev_emb
         self.use_attn_mask = use_attn_mask
+        self.attn_penalty = attn_penalty
         self.embedding = nn.Embedding(
             vocab_size,
             embedding_dim,
@@ -224,10 +226,12 @@ class SimpleMLPDecoder(nn.Module):
             if fix_embedding:
                 self.embedding.requires_grad = False
         # for attention to work, embedding_dim and category embedding dim should be the same
-        if (embedding_dim * 2) != cat_emb_dim:
+        if attention_type != 'self' and (embedding_dim * 2) != cat_emb_dim:
             print(embedding_dim)
             print(cat_emb_dim)
-            raise RuntimeError("for attention to work, embedding_dim and category embedding dim should be the same or double for bidirectional")
+            raise RuntimeError("For scaled attention to work, embedding_dim and category embedding dim should be the same or double for bidirectional")
+        else:
+            assert embedding_dim == cat_emb_dim
         self.category_embedding = nn.Embedding(
             total_cats,
             cat_emb_dim
@@ -261,10 +265,14 @@ class SimpleMLPDecoder(nn.Module):
                                                           dropout=dropout))
                 self.attentions = [getattr(self, 'attention_{}'.format(i+1)) for i in range(max_categories)]
         elif attention_type == 'self':
-            for i in range(max_categories):
-                setattr(self, 'attention_{}'.format(i+1),
-                        DocumentLevelSelfAttention(embedding_dim,da,n_heads[i],embedding_dim * 2))
-            self.attentions = [getattr(self,'attention_{}'.format(i + 1)) for i in range(max_categories)]
+            if single_attention:
+                self.attention_0 = DocumentLevelSelfAttention(embedding_dim,da,n_heads[-1],
+                                                              embedding_dim * 2)
+            else:
+                for i in range(max_categories):
+                    setattr(self, 'attention_{}'.format(i+1),
+                            DocumentLevelSelfAttention(embedding_dim,da,n_heads[i],embedding_dim * 2))
+                self.attentions = [getattr(self,'attention_{}'.format(i + 1)) for i in range(max_categories)]
 
         self.init_weights()
 
@@ -331,7 +339,10 @@ class SimpleMLPDecoder(nn.Module):
                                                        attn_mask=attn_mask, atm=self.use_attn_mask)
             doc_emb = doc_emb.squeeze(1)
         elif self.attention_type == 'self':
-            doc_emb, attn = self.attentions[level](encoder_outputs, encoder_lens, cat_emb.size(0))
+            if self.single_attention:
+                doc_emb, attn = self.attention_0(encoder_outputs, encoder_lens, cat_emb.size(0), cat_emb)
+            else:
+                doc_emb, attn = self.attentions[level](encoder_outputs, encoder_lens, cat_emb.size(0), cat_emb)
         elif self.attention_type == 'no_attention':
             # Maxpool
             doc_emb = torch.max(encoder_outputs, 1)[0]
@@ -412,7 +423,10 @@ class SimpleMLPDecoder(nn.Module):
                         raise NotImplementedError("renormalization scheme not implemented")
                 out = self.temp_logsoftmax(out, self.temperature)
                 target_cat = categories[:, i+1]
-                attn_penalty = 0 #self.calculate_attention_penalty(attn, batch_size=inp_cat.size(0))
+                if self.attn_penalty:
+                    attn_penalty = self.calculate_attention_penalty(attn, batch_size=inp_cat.size(0))
+                else:
+                    attn_penalty = 0
                 loss += loss_fn(out, target_cat) * loss_focus[i] + attn_penalty_coeff * attn_penalty
                 #out = self.mask_renormalize(inp_cat, out)
                 pred_logits, out_pred = torch.max(out.data, 1)
@@ -475,7 +489,10 @@ class SimpleMLPDecoder(nn.Module):
                 if batch_masking:
                     target_cat = target_cat * Variable(batch_mask)
                     out = (out.transpose(0,1) * Variable(batch_mask.float())).transpose(0,1)
-                attn_penalty = 0 #self.calculate_attention_penalty(attn, batch_size=inp_cat.size(0))
+                if self.attn_penalty:
+                    attn_penalty = self.calculate_attention_penalty(attn, batch_size=inp_cat.size(0))
+                else:
+                    attn_penalty = 0
                 loss += loss_fn(out, target_cat) * loss_focus[i] + attn_penalty_coeff * attn_penalty
                 #out = self.mask_renormalize(inp_cat, out)
                 pred_logits, out_pred = torch.max(out.data, 1)

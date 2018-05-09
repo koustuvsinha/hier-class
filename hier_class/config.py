@@ -68,6 +68,9 @@ def exp_config():
     use_attn_mask = False # use attention mask for scaled if required
     renormalize = 'level' # level -> for level masking, category -> for tree masking
     single_attention = True # for scaled attention use only one attention layer for all
+    attn_penalty = False
+
+### Web of Science experiments
 
 @ex.named_config
 def wos_variation_1():
@@ -107,8 +110,43 @@ def wos_variation_6():
     n_heads = [2,2,8]
     prev_emb = False
 
+@ex.named_config
+def wos_variation_7():
+    exp_name = 'self_attention_new'
+    n_heads = [4,4,4]
+    prev_emb = False
+    attention_type = 'self'
+    cat_emb_dim = 300
+    single_attention = False
 
+@ex.named_config
+def wos_variation_8():
+    exp_name = 'self_attention_new_single'
+    n_heads = [8,8,8]
+    prev_emb = False
+    attention_type = 'self'
+    cat_emb_dim = 300
+    da = 500
+    single_attention = True
+    attn_penalty = True
 
+### DBpedia experiments
+
+@ex.named_config
+def dbp_variation_1():
+    exp_name = 'db_self_attention_new_single'
+    n_heads = [8,8,8]
+    prev_emb = False
+    attention_type = 'self'
+    cat_emb_dim = 300
+    single_attention = True
+    attn_penalty = True
+    clean = True
+    data_loc = '/home/ml/ksinha4/mlp/hier-class/data/'
+    data_path = 'db_sm_train_clean'
+    file_name = 'df_small_train.csv'
+    test_file_name = 'df_small_test.csv'
+    test_output_name = 'df_small_outp.csv'
 
 
 

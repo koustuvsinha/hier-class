@@ -90,9 +90,9 @@ class DocumentLevelSelfAttention(nn.Module):
     """
     def __init__(self, nhid, da, r, mlp_nhid, cuda=True):
         super(DocumentLevelSelfAttention, self).__init__()
-        self.S1 = nn.Linear(nhid * 2, da, bias=False)
+        self.S1 = nn.Linear(nhid * 3, da, bias=False)
         self.S2 = nn.Linear(da, r, bias=False)
-        self.MLP = nn.Linear(r * nhid * 2, mlp_nhid)
+        self.MLP = nn.Linear(r * nhid * 3, mlp_nhid)
 
         self.r = r
         self.nhid = nhid
@@ -106,17 +106,40 @@ class DocumentLevelSelfAttention(nn.Module):
         self.MLP.weight.data.uniform_(-initrange, initrange)
         self.MLP.bias.data.fill_(0)
 
-    def forward(self, encoder_outputs, encoder_lengths, batch_size):
-        BM = Variable(torch.zeros(batch_size, self.r * self.nhid * 2))
+    def forward(self, encoder_outputs, encoder_lengths, batch_size, cat_emb, temp=1):
+        """
+        n = max length of sequence
+        D = dimension of model
+        B = batch
+        :param encoder_outputs: B x n x 2D = H
+        :param encoder_lengths: B x 1
+        :param batch_size: B
+        :param cat_emb: B x 1 x D, V
+        :param temp: temperature for softmax
+        :return:
+
+        Original self attention: A = softmax(W_{s2} tanh(W_{s_1} H^T))
+        where,
+            W_{s_1} = d_a x 2 D
+            W_{s_2} = r x d_a # no. of lookups
+        Bahdanau style self attention: concat the category embedding on top of each row of H
+            Same equation, \bar{H} = H (+) V = B x n x 3D
+        Changes required,
+            W_{s_1} = d_a x 3 D
+        """
+        BM = Variable(torch.zeros(batch_size, self.r * self.nhid * 3))
         if self.cuda:
             BM = BM.cuda()
         weights = []
+        HV = encoder_outputs
+        HV = torch.cat([HV, cat_emb.expand(cat_emb.size(0), HV.size(1), cat_emb.size(2))], 2)
+
         for i in range(batch_size):
-            H = encoder_outputs[i, :encoder_lengths[i],:]
-            s1 = self.S1(H)
-            s2 = self.S2(F.tanh(s1))
-            A = F.softmax(s2.t())
-            M = torch.mm(A,H)
+            H = HV[i, :encoder_lengths[i],:] # n x 3D
+            s1 = self.S1(H) # n x da
+            s2 = self.S2(F.tanh(s1)) # n x r
+            A = F.softmax(s2.t() / temp, dim=1) # r x n
+            M = torch.mm(A,H) # (r x n) * (n x 3D) = r x 3D
             BM[i,:] = M.view(-1)
             weights.append(A)
 
