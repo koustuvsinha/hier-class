@@ -2,6 +2,7 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+import torch.nn.init as init
 from torch.autograd import Variable
 from torch.nn.utils.rnn import pack_padded_sequence, pad_packed_sequence
 import random
@@ -174,6 +175,8 @@ class SimpleMLPDecoder(nn.Module):
                  embedding=None,
                  use_embedding=False,
                  fix_embedding=False,
+                 single_attention=False,
+                 attn_penalty=True,
                  **kwargs):
         """
 
@@ -195,6 +198,7 @@ class SimpleMLPDecoder(nn.Module):
         :param gpu: gpu id, default 0 (if using CUDA_VISIBLE_DEVICES then no need to use this)
         :param prev_emb: if True use previous embedding
         :param attention_type: scaled or self
+        :param single_attention: whether use a single attention layer for all levels or not
         :param kwargs:
         """
         super(SimpleMLPDecoder, self).__init__()
@@ -210,6 +214,7 @@ class SimpleMLPDecoder(nn.Module):
         self.gpu = gpu
         self.prev_emb = prev_emb
         self.use_attn_mask = use_attn_mask
+        self.attn_penalty = attn_penalty
         self.embedding = nn.Embedding(
             vocab_size,
             embedding_dim,
@@ -221,10 +226,13 @@ class SimpleMLPDecoder(nn.Module):
             if fix_embedding:
                 self.embedding.requires_grad = False
         # for attention to work, embedding_dim and category embedding dim should be the same
-        if (embedding_dim * 2) != cat_emb_dim:
-            print(embedding_dim)
-            print(cat_emb_dim)
-            raise RuntimeError("for attention to work, embedding_dim and category embedding dim should be the same or double for bidirectional")
+        if attention_type != 'self':
+            if (embedding_dim * 2) != cat_emb_dim:
+                print(embedding_dim)
+                print(cat_emb_dim)
+                raise RuntimeError("For scaled attention to work, embedding_dim and category embedding dim should be the same or double for bidirectional")
+        else:
+            assert embedding_dim == cat_emb_dim
         self.category_embedding = nn.Embedding(
             total_cats,
             cat_emb_dim
@@ -237,6 +245,7 @@ class SimpleMLPDecoder(nn.Module):
         self.linear = nn.Linear(embedding_dim * mult_factor, mlp_hidden_dim)
         self.linear2 = nn.Linear(mlp_hidden_dim, label_size)
         self.relu = nn.ReLU()
+        self.tanh = nn.Tanh()
         self.dropout = nn.Dropout(dropout)
         #self.linear1 = nn.Linear(embedding_dim + cat_emb_dim, self.label_sizes[0])
         #self.linear2 = nn.Linear(embedding_dim + cat_emb_dim, self.label_sizes[1])
@@ -245,30 +254,48 @@ class SimpleMLPDecoder(nn.Module):
         self.taxonomy = taxonomy
         self.max_words = max_words
         self.attention_type = attention_type
+        self.single_attention = single_attention
         if attention_type == 'scaled':
-            for i in range(max_categories):
-                setattr(self, 'attention_{}'.format(i+1),
-                        DocumentLevelAttention(embedding_dim,d_k,d_v, n_head=n_heads[i],
-                                                      dropout=dropout))
-            self.attentions = [getattr(self, 'attention_{}'.format(i+1)) for i in range(max_categories)]
+            if single_attention:
+                self.attention_0 = DocumentLevelAttention(embedding_dim, d_k, d_v,
+                                                          n_head=n_heads[-1], dropout=dropout)
+            else:
+                for i in range(max_categories):
+                    setattr(self, 'attention_{}'.format(i+1),
+                            DocumentLevelAttention(embedding_dim,d_k,d_v, n_head=n_heads[i],
+                                                          dropout=dropout))
+                self.attentions = [getattr(self, 'attention_{}'.format(i+1)) for i in range(max_categories)]
         elif attention_type == 'self':
-            for i in range(max_categories):
-                setattr(self, 'attention_{}'.format(i+1),
-                        DocumentLevelSelfAttention(embedding_dim,da,n_heads[i],embedding_dim * 2))
-            self.attentions = [getattr(self,'attention_{}'.format(i + 1)) for i in range(max_categories)]
-        else:
-            return
+            if single_attention:
+                self.attention_0 = DocumentLevelSelfAttention(embedding_dim,da,n_heads[-1],
+                                                              embedding_dim * 2)
+            else:
+                for i in range(max_categories):
+                    setattr(self, 'attention_{}'.format(i+1),
+                            DocumentLevelSelfAttention(embedding_dim,da,n_heads[i],embedding_dim * 2))
+                self.attentions = [getattr(self,'attention_{}'.format(i + 1)) for i in range(max_categories)]
+
+        self.init_weights()
+
 
 
 
     def init_weights(self):
         initrange = 0.1
-        self.embedding.weight.data.uniform(-initrange, initrange)
-        self.category_embedding.weight.data.uniform(-initrange, initrange)
-        nn.init.xavier_normal(
-            self.decoder2linear.weight,
-            gain=nn.init.calculate_gain('tanh')
-        )
+        init.xavier_normal(self.embedding.weight)
+        init.xavier_normal(self.category_embedding.weight)
+        #self.embedding.weight.data.uniform(-initrange, initrange)
+        #self.category_embedding.weight.data.uniform(-initrange, initrange)
+        for name,param in self.encoder.named_parameters():
+            if 'bias' in name:
+                init.constant(param, 0.0)
+            elif 'weight' in name:
+                init.xavier_normal(param)
+        init.xavier_normal(self.linear.weight)
+        init.xavier_normal(self.linear2.weight)
+
+
+
 
     def init_hidden(self, batch_size, gpu=0):
         hidden = Variable(torch.zeros(batch_size, self.embedding_dim)).cuda(gpu)
@@ -305,11 +332,18 @@ class SimpleMLPDecoder(nn.Module):
         cat_emb = self.category_embedding(inp_cat)
         cat_emb = cat_emb.unsqueeze(1)
         if self.attention_type == 'scaled':
-            doc_emb, attn = self.attentions[level](cat_emb, encoder_outputs, encoder_outputs,
-                                                   attn_mask=None, atm=None)
+            if self.single_attention:
+                doc_emb, attn = self.attention_0(cat_emb, encoder_outputs, encoder_outputs,
+                                                       attn_mask=attn_mask, atm=self.use_attn_mask)
+            else:
+                doc_emb, attn = self.attentions[level](cat_emb, encoder_outputs, encoder_outputs,
+                                                       attn_mask=attn_mask, atm=self.use_attn_mask)
             doc_emb = doc_emb.squeeze(1)
         elif self.attention_type == 'self':
-            doc_emb, attn = self.attentions[level](encoder_outputs, encoder_lens, cat_emb.size(0))
+            if self.single_attention:
+                doc_emb, attn = self.attention_0(encoder_outputs, encoder_lens, cat_emb.size(0), cat_emb)
+            else:
+                doc_emb, attn = self.attentions[level](encoder_outputs, encoder_lens, cat_emb.size(0), cat_emb)
         elif self.attention_type == 'no_attention':
             # Maxpool
             doc_emb = torch.max(encoder_outputs, 1)[0]
@@ -318,15 +352,18 @@ class SimpleMLPDecoder(nn.Module):
             raise NotImplementedError("attention type not implemented")
         if use_prev_emb:
             doc_emb = torch.cat((prev_emb, doc_emb), 1)
-        x = self.linear(doc_emb)
-        hidden_rep = self.dropout(x)
-        x = self.relu(hidden_rep)
-        x = self.linear2(x)
-        logits = self.dropout(x)
+        doc_emb = doc_emb.view(doc_emb.size(0), -1)
+        hidden_rep = self.tanh(self.linear(self.dropout(doc_emb)))
+        logits = self.linear2(self.dropout(hidden_rep))
+        #x = self.linear(doc_emb)
+        #hidden_rep = self.dropout(x)
+        #x = self.relu(hidden_rep)
+        #x = self.linear2(x)
+        #logits = self.dropout(x)
         #x = self.linears[level](x)
         #logits = self.temp_logsoftmax(x, self.temperature)
 
-        return logits, attn, hidden_rep
+        return logits, attn, hidden_rep.view(prev_emb.size())
 
     def batchNLLLoss(self, src, src_lengths, categories, tf_ratio=1.0, loss_focus=[],
                      loss_weights=None, renormalize='level', max_categories=3, batch_masking=False,
@@ -340,6 +377,7 @@ class SimpleMLPDecoder(nn.Module):
         :param tf_ratio: teacher forcing ratio
         :return:
         """
+        #pdb.set_trace()
         if type(loss_weights) == torch.FloatTensor:
             loss_fn = nn.NLLLoss(weight=loss_weights)
         else:
@@ -350,7 +388,7 @@ class SimpleMLPDecoder(nn.Module):
         encoder_outputs, encoder_lens = self.encode(src, src_lengths)
         hidden_rep = self.init_hidden(src.size(0))
         cat_len = categories.size(1) - 1
-        assert cat_len == max_categories
+        # assert cat_len == max_categories
         out = None
         out_p = None
         #pdb.set_trace()
@@ -360,29 +398,36 @@ class SimpleMLPDecoder(nn.Module):
         predictions = []
         correct_confs = []
         incorrect_confs = []
+        levels = len(self.label_sizes)
 
         use_tf = True if (random.random() < tf_ratio) else False
         if use_tf:
-            for i in range(cat_len):
+            for i in range(levels):
                 inp_cat = categories[:, i]
                 if torch.max(inp_cat).data.cpu().numpy() > self.total_cats:
                     print(inp_cat)
                     raise RuntimeError("category ID outside of embedding")
                 # hidden_state = torch.cat((hidden_state, context_state), 2)
                 #inp_cat = inp_cat.unsqueeze(1)
-                attn_mask = None #get_attn_padding_mask(inp_cat, src)
+                if self.use_attn_mask:
+                    attn_mask = get_attn_padding_mask(inp_cat, src)
+                else:
+                    attn_mask = None
                 out, attn, hidden_rep = self.forward(encoder_outputs, encoder_lens, inp_cat, i, prev_emb=hidden_rep,
                                                      use_prev_emb=self.prev_emb,attn_mask=attn_mask)
                 if renormalize:
                     if renormalize == 'level':
-                        out = self.mask_renormalize(out,i)
+                        out = self.mask_level(out,i)
                     elif renormalize == 'category':
-                        out = self.mask_renormalize_level(out,inp_cat)
+                        out = self.mask_category(out,inp_cat)
                     else:
                         raise NotImplementedError("renormalization scheme not implemented")
                 out = self.temp_logsoftmax(out, self.temperature)
                 target_cat = categories[:, i+1]
-                attn_penalty = 0 #self.calculate_attention_penalty(attn, batch_size=inp_cat.size(0))
+                if self.attn_penalty:
+                    attn_penalty = self.calculate_attention_penalty(attn, batch_size=inp_cat.size(0))
+                else:
+                    attn_penalty = 0
                 loss += loss_fn(out, target_cat) * loss_focus[i] + attn_penalty_coeff * attn_penalty
                 #out = self.mask_renormalize(inp_cat, out)
                 pred_logits, out_pred = torch.max(out.data, 1)
@@ -413,7 +458,7 @@ class SimpleMLPDecoder(nn.Module):
             else:
                 batch_mask = None
             last_p = 1
-            for i in range(cat_len):
+            for i in range(levels):
                 #pdb.set_trace()
                 if i == 0:
                     inp_cat = categories[:, i]  # starting token
@@ -427,14 +472,17 @@ class SimpleMLPDecoder(nn.Module):
                     raise RuntimeError("category ID outside of embedding")
                 #inp_cat = categories[:, i]
                 #inp_cat = inp_cat.unsqueeze(1)
-                attn_mask = None #get_attn_padding_mask(inp_cat, src)
+                if self.use_attn_mask:
+                    attn_mask = get_attn_padding_mask(inp_cat, src)
+                else:
+                    attn_mask = None
                 out, attn, hidden_rep = self.forward(encoder_outputs, encoder_lens, inp_cat, i, prev_emb=hidden_rep,
                                                      use_prev_emb=self.prev_emb,attn_mask=attn_mask)
                 if renormalize:
                     if renormalize == 'level':
-                        out = self.mask_renormalize(out,i)
+                        out = self.mask_level(out,i)
                     elif renormalize == 'category':
-                        out = self.mask_renormalize_level(out,inp_cat)
+                        out = self.mask_category(out,inp_cat)
                     else:
                         raise NotImplementedError("renormalization scheme not implemented")
                 out = self.temp_logsoftmax(out, self.temperature)
@@ -442,7 +490,10 @@ class SimpleMLPDecoder(nn.Module):
                 if batch_masking:
                     target_cat = target_cat * Variable(batch_mask)
                     out = (out.transpose(0,1) * Variable(batch_mask.float())).transpose(0,1)
-                attn_penalty = 0 #self.calculate_attention_penalty(attn, batch_size=inp_cat.size(0))
+                if self.attn_penalty:
+                    attn_penalty = self.calculate_attention_penalty(attn, batch_size=inp_cat.size(0))
+                else:
+                    attn_penalty = 0
                 loss += loss_fn(out, target_cat) * loss_focus[i] + attn_penalty_coeff * attn_penalty
                 #out = self.mask_renormalize(inp_cat, out)
                 pred_logits, out_pred = torch.max(out.data, 1)
@@ -478,7 +529,7 @@ class SimpleMLPDecoder(nn.Module):
 
         return loss, accs, attns, predictions, correct_labels, correct_confs, incorrect_confs
 
-    def mask_renormalize(self, logits, level=0):
+    def mask_level(self, logits, level=0):
         """
         Given level, mask out all the other level classes
         :param parent_class_batch: parent class ID in batch, batch x 1
@@ -500,7 +551,7 @@ class SimpleMLPDecoder(nn.Module):
         logits.data.masked_fill_(mask, -float('inf'))
         return logits
 
-    def mask_renormalize_level(self, logits, parent_class_batch):
+    def mask_category(self, logits, parent_class_batch):
         """
         Given a parent class, logits and taxonomy, mask the classes which are not in child
         :param logits:
@@ -552,10 +603,9 @@ class SimpleMLPDecoder(nn.Module):
 
 def get_attn_padding_mask(seq_q, seq_k):
     ''' Indicate the padding-related part to mask '''
-    #print(seq_q.size())
-    #print(seq_k.size())
-    assert seq_q.dim() == 2 and seq_k.dim() == 2
-    mb_size, len_q = seq_q.size()
+    assert seq_q.dim() == 1 and seq_k.dim() == 2
+    mb_size = seq_q.size()
+    len_q = 1
     mb_size, len_k = seq_k.size()
     pad_attn_mask = seq_k.data.eq(0).unsqueeze(1)   # bx1xsk
     pad_attn_mask = pad_attn_mask.expand(mb_size, len_q, len_k) # bxsqxsk

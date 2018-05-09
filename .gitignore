@@ -114,6 +114,7 @@ logs/
 saved/
 *.csv
 *.mod
+*.pkl
 
 /Structured-Self-Attention/
 !/Structured-Self-Attention/

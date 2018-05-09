@@ -8,7 +8,6 @@ from torch.autograd import Variable
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 import numpy as np
 import logging
-from sacred import Experiment
 from pprint import pprint, pformat
 import logging
 from tensorboardX import SummaryWriter
@@ -28,70 +27,11 @@ from hier_class.models import decoders, baselines
 from hier_class.utils import constants as CONSTANTS
 from hier_class.utils import model_utils as mu
 from hier_class.utils.stats import Statistics
+from hier_class.utils.evaluate import evaluate_test
 import pdb
+from hier_class.config import *
 
-ex = Experiment()
-
-@ex.config
-def exp_config():
-    gpu = 0
-    use_gpu = True
-    exp_name = ''
-    embedding_dim = 300
-    mlp_hidden_dim = 300
-    use_embedding = False
-    fix_embeddings = False
-    embedding_file = '/home/ml/ksinha4/word_vectors/glove/glove.840B.300d.txt'
-    embedding_saved = 'glove_embeddings.mod'
-    load_model = False
-    load_model_path = ''
-    save_name = 'model_epoch_{}_step_{}.mod'
-    optimizer = 'adam'
-    lr = 1e-3
-    lr_factor = 0.1
-    lr_threshold = 1e-4
-    lr_patience = 5
-    clip_grad = 0.5
-    momentum = 0.9
-    dropout = 0.2
-    log_interval = 200
-    save_interval = 1000
-    train_test_split = 0.9
-    data_type = 'WIKI'
-    data_loc = '/home/ml/ksinha4/datasets/data_WIKI'
-    data_path = 'wiki_pruned'
-    file_name = 'full_docs_2.csv'
-    #data_loc = '/home/ml/ksinha4/datasets/data_WOS/WebOfScience/WOS46985'
-    tokenization = 'word'
-    batch_size = 16
-    epochs = 60
-    level = -1
-    levels = 3
-    cat_emb_dim = 64
-    tf_ratio=0.5
-    tf_anneal=0.8
-    validation_tf = 0
-    weight_decay=1e-6
-    temperature = 1
-    loss_focus = [1,1,1]
-    label_weights = [1,1,1]
-    dynamic_dictionary = True
-    max_vocab = 100000
-    max_word_doc = -1
-    decoder_ready = True
-    prev_emb = True
-    n_heads = [2,2,8]
-    baseline = False # either False, or fast / bilstm
-    debug = False
-    attn_penalty_coeff = 1
-    d_k = 64
-    d_v = 64
-    da = 350
-    seed = 1111
-    attention_type = 'self'
-    use_attn_mask = False # use attention mask
-    renormalize = 'category'
-
+# new
 
 @ex.automain
 def train(_config, _run):
@@ -111,13 +51,16 @@ def train(_config, _run):
         max_vocab=_config['max_vocab'],
         max_word_doc=_config['max_word_doc'],
         level = _config['level'],
-        decoder_ready=_config['decoder_ready']
+        decoder_ready=_config['decoder_ready'],
+        levels=_config['levels'],
+        tokenization=_config['tokenization'],
+        clean=_config['clean']
     )
     max_categories = _config['levels']
     if _config['level'] != -1:
         max_categories = 1
     logging.info("Loading data")
-    data.load(_config['data_type'],_config['data_loc'],_config['file_name'],_config['tokenization'])
+    data.load(_config['data_type'],_config['data_loc'],_config['file_name'])
     test_data = copy.deepcopy(data)
     test_data.data_mode = 'test'
 
@@ -126,11 +69,14 @@ def train(_config, _run):
     use_gpu = _config['use_gpu']
     model_params = copy.deepcopy(_config)
     cat_per_level = []
+    label_size = 1
     for level in range(_config['levels']):
         nl = len(data.get_level_labels(level))
         logging.info('Classes in level {} = {}'.format(level, nl))
         cat_per_level.append(nl)
-    label_size = data.decoder_num_labels
+        label_size += nl
+    print(cat_per_level)
+
     if _config['level'] != -1:
         # check if _config['level'] is not arbitrary
         if _config['level'] >= len(cat_per_level):
@@ -141,7 +87,9 @@ def train(_config, _run):
     if _config['use_embedding']:
         logging.info("Creating / loading word embeddings")
         embedding = data.load_embedding(_config['embedding_file'],
-                                        _config['embedding_saved'], data_path=_config['data_path'])
+                                        _config['embedding_saved'],
+                                        embedding_dim=_config['embedding_dim'],
+                                        data_path=_config['data_path'])
     model_params.update({
         'vocab_size': len(data.word2id),
         'label_size': label_size,
@@ -277,7 +225,7 @@ def train(_config, _run):
                                             renormalize=_config['renormalize'])
             loss.backward()
             #m_params = [p for p in model.parameters() if p.requires_grad]
-            #nn.utils.clip_grad_norm(m_params, _config['clip_grad'])
+            nn.utils.clip_grad_norm(m_params, _config['clip_grad'])
             optimizer.step()
             stats.update_train(loss.data[0], accs)
             if _config['debug']:
@@ -311,6 +259,10 @@ def train(_config, _run):
         tf_ratio = tf_ratio * _config['tf_anneal']
         ## saving model
         mu.save_model(model,0,0,_config['exp_name'],model_params)
+    ## Evaluate Testing data
+    model.eval()
+    evaluate_test(model, data, _config['test_file_name'],_config['test_output_name'],_config)
+
 
 
 
