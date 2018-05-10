@@ -188,6 +188,16 @@ def wos_variation_13():
 ### DBpedia experiments
 
 @ex.named_config
+def dbp_base():
+    data_loc = '/home/ml/ksinha4/mlp/hier-class/data/'
+    data_path = 'db_sm_train_clean'
+    file_name = 'df_small_train.csv'
+    test_file_name = 'df_small_test.csv'
+    test_output_name = 'df_small_outp.csv'
+    levels = 3
+    weight_decay = 1e-6
+
+@ex.named_config
 def dbp_variation_1():
     exp_name = 'db_self_attention_new_single'
     n_heads = [2,2,2]
@@ -198,13 +208,7 @@ def dbp_variation_1():
     single_attention = True
     attn_penalty = True
     clean = True
-    data_loc = '/home/ml/ksinha4/mlp/hier-class/data/'
-    data_path = 'db_sm_train_clean'
-    file_name = 'df_small_train.csv'
-    test_file_name = 'df_small_test.csv'
-    test_output_name = 'df_small_outp.csv'
-    levels = 3
-    batch_size = 32
+    batch_size = 16
 
 
 @ex.named_config
@@ -213,11 +217,46 @@ def dbp_variation_2():
     prev_emb = True
     attention_type = 'no_attention'
     clean = True
-    data_loc = '/home/ml/ksinha4/mlp/hier-class/data/'
-    data_path = 'db_sm_train_clean'
-    file_name = 'df_small_train.csv'
-    test_file_name = 'df_small_test.csv'
-    test_output_name = 'df_small_outp.csv'
-    levels = 3
+    n_heads = [2,2,4]
 
+@ex.named_config
+def dbp_variation_3():
+    exp_name = 'db_scaled_attention'
+    prev_emb = False
+    attention_type = 'scaled'
+    clean = True
+    single_attention = True
+    n_heads = [8, 8, 8]
+    lr_patience = 30
+    batch_size = 16
 
+@ex.named_config
+def dbp_variation_4():
+    exp_name = 'db_scaled_attention_2'
+    prev_emb = False
+    attention_type = 'scaled'
+    clean = True
+    single_attention = True
+    n_heads = [4, 4, 4]
+    lr_patience = 30
+
+@ex.named_config
+def dbp_variation_5():
+    exp_name = 'db_scaled_attention_2'
+    prev_emb = True
+    attention_type = 'scaled'
+    clean = True
+    single_attention = True
+    n_heads = [4, 4, 4]
+    lr_patience = 30
+
+@ex.named_config
+def dbp_variation_6():
+    exp_name = 'db_scaled_attention_ugly'
+    prev_emb = False
+    attention_type = 'scaled'
+    clean = False
+    data_path = 'db_sm_train_ugly'
+    single_attention = True
+    n_heads = [2, 2, 2]
+    lr_patience = 30

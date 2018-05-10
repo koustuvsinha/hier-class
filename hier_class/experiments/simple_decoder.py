@@ -228,6 +228,11 @@ def train(_config, _run):
             nn.utils.clip_grad_norm(m_params, _config['clip_grad'])
             optimizer.step()
             stats.update_train(loss.data[0], accs)
+            ## free up memory
+            del labels
+            del src_data
+            del loss
+            del accs
             if _config['debug']:
                 break
         ## validate
