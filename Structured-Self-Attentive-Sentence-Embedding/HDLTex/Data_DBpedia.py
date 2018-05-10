@@ -7,6 +7,7 @@ import WOS_input as WOS
 import Download_Glove as GloVe
 import numpy as np
 import os
+import pandas
 
 
 ''' Location of the dataset'''
@@ -53,39 +54,36 @@ def text_cleaner(text):
         text = text.strip()
     return text.lower()
 
+def read(self,  data_loc='',
+        file_name='full_docs_2.csv', tokenization='word'):
+    """
+    Given data type and location, load data
+    :param data_loc: location of dataset
+    :param tokenization: mode of tokenization : word, char
+    :return: (text,label) df_text is the tokenized text, df['l3'] last layer label
+    """
+    df = pandas.read_csv(data_loc + '/' + file_name)
+    df = df.sample(frac=1).reset_index(drop=True)
+    # df_texts = [self.tokenize(text) for text in df.text]
+    # # df_texts = df.text.apply(self.tokenize)
+    # # create dictionary
+    # assert len(df_texts) == len(df['l3']) # l3 is the end level label
+    # # print("finished tokenizing %d data instances"%len(df['l3']))
+    # 
+    # df = pandas.DataFrame(list(zip(df_texts, list(df['l3']))))
+    # df.columns=['text', 'label']
+    # # return df_texts, df['l3']
+    return df
 
 def loadData_Tokenizer(DATASET, MAX_NB_WORDS,MAX_SEQUENCE_LENGTH):
-
-    # print(path_WOS)
-    if DATASET == 1:
-        fname = os.path.join(path_WOS,"WebOfScience/WOS5736/X.txt")
-        fnamek = os.path.join(path_WOS,"WebOfScience/WOS5736/YL1.txt")
-        fnameL2 = os.path.join(path_WOS,"WebOfScience/WOS5736/YL2.txt")
-        fnameAll = os.path.join(path_WOS,"WebOfScience/WOS5736/Y.txt")
-    elif DATASET == 2:
-        fname = os.path.join(path_WOS, "WebOfScience/WOS11967/X.txt")
-        fnamek = os.path.join(path_WOS, "WebOfScience/WOS11967/YL1.txt")
-        fnameL2 = os.path.join(path_WOS, "WebOfScience/WOS11967/YL2.txt")
-        fnameAll = os.path.join(path_WOS, "WebOfScience/WOS11967/Y.txt")
-    else:
-        fname = os.path.join(path_WOS, "WebOfScience/WOS46985/X.txt")
-        fnamek = os.path.join(path_WOS, "WebOfScience/WOS46985/YL1.txt")
-        fnameL2 = os.path.join(path_WOS, "WebOfScience/WOS46985/YL2.txt")
-        fnameAll = os.path.join(path_WOS, "WebOfScience/WOS46985/Y.txt")
+    data_loc = '/home/ml/ksinha4/mlp/hier-class/data'
+    df_train = read(data_loc=data_loc, file_name="df_small_train.csv")
+    df_test = read(data_loc=data_loc, file_name="df_small_test.csv")
         
-    with open(fname) as f:
-        content = f.readlines()
-        content = [clean_str(x) for x in content]
-    content = np.array(content)
-    with open(fnamek) as fk:
-        contentk = fk.readlines()
-    contentk = [x.strip() for x in contentk]
-    number_of_classes_L1 = len(set(contentk))
-    # print(contentk)
-    # print(len(contentk))
-    # with open(fnameL2) as fk:
-    #     contentL2 = fk.readlines()
-    #     contentL2 = [x.strip() for x in contentL2]
+    df_train.text = [clean_str(x) for x in  df_train.text]
+    df_test.text = [clean_str(x) for x in df_test.text]
+    number_of_classes_L1 = len(set(df_train.l1))
+ 
     with open(fnameAll) as fk:
         contentL2 = fk.readlines()
         contentL2 = [x.strip() for x in contentL2]
