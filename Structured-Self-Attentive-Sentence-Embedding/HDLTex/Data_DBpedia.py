@@ -54,7 +54,7 @@ def text_cleaner(text):
         text = text.strip()
     return text.lower()
 
-def read(self,  data_loc='',
+def read(data_loc='',
         file_name='full_docs_2.csv', tokenization='word'):
     """
     Given data type and location, load data
@@ -82,24 +82,10 @@ def loadData_Tokenizer(DATASET, MAX_NB_WORDS,MAX_SEQUENCE_LENGTH):
         
     df_train.text = [clean_str(x) for x in  df_train.text]
     df_test.text = [clean_str(x) for x in df_test.text]
-    number_of_classes_L1 = len(set(df_train.l1))
- 
-    with open(fnameAll) as fk:
-        contentL2 = fk.readlines()
-        contentL2 = [x.strip() for x in contentL2]
-        # print(len(contentL2))
-
-    Label = np.matrix(contentk, dtype=int)
-    # number_of_classes_L1 = len(np.unique(Label[0]))  # number of classes in Level 1
-    Label = np.transpose(Label)
-
-
-    Label_L2 = np.matrix(contentL2, dtype=int)
-    Label_L2 = np.transpose(Label_L2)
-    np.random.seed(7)
-
-    Label = np.column_stack((Label, Label_L2))
-
+    number_of_classes_L1 = len(df_train.l1.unique())
+    print(number_of_classes_L1)
+    print(df_train.groupby('l1').groups.keys())
+    l2_df = df_train.groupby('l1').groups.keys()
     number_of_classes_L2 = np.zeros(number_of_classes_L1,dtype=int) #number of classes in Level 2 that is 1D array with size of (number of classes in level one,1)
 
 
