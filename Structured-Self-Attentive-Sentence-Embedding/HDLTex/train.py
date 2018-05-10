@@ -22,7 +22,7 @@ if __name__ == "__main__":
     epochs = 40
     L1_model =2 # 0 is DNN, 1 is CNN, and 2 is RNN for Level 1
     L2_model =2 # 0 is DNN, 1 is CNN, and 2 is RNN for Level 2
-    DATASET = 3
+    DATASET = 2
     np.set_printoptions(threshold=np.inf)
     '''
     location of input data in two ways 
