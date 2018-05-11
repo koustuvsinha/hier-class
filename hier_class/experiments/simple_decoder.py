@@ -218,7 +218,7 @@ def train(_config, _run):
                 labels = labels.cuda(gpu)
             #    cat_labels = cat_labels.cuda(gpu)
             optimizer.zero_grad()
-            loss, accs, *_ = model.batchNLLLoss(src_data, src_lengths, labels,
+            loss, accs, attns, *_ = model.batchNLLLoss(src_data, src_lengths, labels,
                                             tf_ratio=tf_ratio,
                                             loss_focus=_config['loss_focus'],
                                             loss_weights=label_weights,
@@ -236,6 +236,7 @@ def train(_config, _run):
             del src_data
             del loss
             del accs
+            del attns
             if _config['debug']:
                 break
         ## validate
@@ -261,6 +262,12 @@ def train(_config, _run):
                                             renormalize=_config['renormalize'])
             stats.update_validation(loss.data[0],accs, attn=attns, src=src_data, preds=preds, correct=correct,
                                     correct_confs=correct_confs, incorrect_confs=incorrect_confs)
+            del labels
+            del src_data
+            del loss
+            del accs
+            del attns
+            del preds
         stats.log_loss()
         lr_scheduler.step(stats.get_valid_acc(0))
         ## anneal

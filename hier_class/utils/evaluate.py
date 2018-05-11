@@ -104,8 +104,6 @@ def evaluate_test(model, data, test_file_loc, output_file_loc, model_params, tot
             elif type(attn) == Variable:
                 attn = attn.data.cpu().numpy()
                 attn = np.squeeze(attn, axis=1)
-            else:
-                attn = []
             row_attentions.append(attn)
         pb.update(1)
         attentions.append(row_attentions)

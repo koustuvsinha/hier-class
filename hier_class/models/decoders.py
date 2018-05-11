@@ -179,6 +179,7 @@ class SimpleMLPDecoder(nn.Module):
                  fix_embedding=False,
                  single_attention=False,
                  attn_penalty=True,
+                 multi_class=True,
                  **kwargs):
         """
 
@@ -201,6 +202,7 @@ class SimpleMLPDecoder(nn.Module):
         :param prev_emb: if True use previous embedding
         :param attention_type: scaled or self
         :param single_attention: whether use a single attention layer for all levels or not
+        :param multi_class: either use different linear layers for each level or not
         :param kwargs:
         """
         super(SimpleMLPDecoder, self).__init__()
@@ -218,6 +220,7 @@ class SimpleMLPDecoder(nn.Module):
         self.use_attn_mask = use_attn_mask
         self.attn_penalty = attn_penalty
         self.n_layers = n_layers
+        self.multi_class = multi_class
         self.embedding = nn.Embedding(
             vocab_size,
             embedding_dim,
@@ -247,10 +250,14 @@ class SimpleMLPDecoder(nn.Module):
         self.encoder = nn.LSTM(embedding_dim, embedding_dim, dropout=dropout,
                                num_layers=n_layers, bidirectional=True, batch_first=True)
         self.linear = nn.Linear(embedding_dim * mult_factor, mlp_hidden_dim)
-        self.classifier_l1 = nn.Linear(mlp_hidden_dim, label_size)
-        self.classifier_l2 = nn.Linear(mlp_hidden_dim, label_size)
-        self.classifier_l3 = nn.Linear(mlp_hidden_dim, label_size)
-        self.classifiers = [self.classifier_l1, self.classifier_l2, self.classifier_l3]
+        if self.multi_class:
+            # TODO: need to correct for proper classes in decoder mode
+            self.classifier_l1 = nn.Linear(mlp_hidden_dim, label_sizes[0])
+            self.classifier_l2 = nn.Linear(mlp_hidden_dim, label_sizes[1])
+            self.classifier_l3 = nn.Linear(mlp_hidden_dim, label_sizes[2])
+            self.classifiers = [self.classifier_l1, self.classifier_l2, self.classifier_l3]
+        else:
+            self.classifier_lall = nn.Linear(mlp_hidden_dim, label_size)
         self.relu = nn.ReLU()
         self.tanh = nn.Tanh()
         self.dropout = nn.Dropout(dropout)
@@ -365,7 +372,10 @@ class SimpleMLPDecoder(nn.Module):
         doc_emb = doc_emb.view(doc_emb.size(0), -1)
         hidden_rep = self.tanh(self.linear(self.dropout(doc_emb)))
         x = self.dropout(hidden_rep)
-        logits = self.classifiers[level](x)
+        if self.multi_class:
+            logits = self.classifiers[level](x)
+        else:
+            logits = self.classifier_lall(x)
         #x = self.linear(doc_emb)
         #hidden_rep = self.dropout(x)
         #x = self.relu(hidden_rep)
@@ -428,7 +438,7 @@ class SimpleMLPDecoder(nn.Module):
                 out, attn, hidden_rep = self.forward(encoder_outputs, encoder_lens, inp_cat, i, prev_emb=hidden_rep,
                                                      use_prev_emb=self.prev_emb,attn_mask=attn_mask)
                 if renormalize:
-                    if renormalize == 'level':
+                    if not self.multi_class and renormalize == 'level':
                         out = self.mask_level(out,i)
                     elif renormalize == 'category':
                         out = self.mask_category(out,inp_cat)
@@ -444,6 +454,12 @@ class SimpleMLPDecoder(nn.Module):
                 loss += loss_fn(out, target_cat) * loss_focus[i] + attn_penalty_coeff * attn_penalty
                 #out = self.mask_renormalize(inp_cat, out)
                 pred_logits, out_pred = torch.max(out.data, 1)
+                # Correct for classes if self.multi_class
+                if self.multi_class:
+                    out_pred += torch.ones(out_pred.size())
+                    if i > 0:
+                        out_pred += torch.ones(out_pred.size()) * self.label_sizes[i-1]
+
                 correct_idx = (out_pred == target_cat.data)
                 incorrect_idx = 1 - correct_idx
                 acc = correct_idx.float().mean()
@@ -459,7 +475,7 @@ class SimpleMLPDecoder(nn.Module):
                     incorrect_conf = 0.0
 
                 accs.append(acc)
-                attns.append(attn)
+                attns.append(self.convert_cpu(attn))
                 predictions.append(out_pred.cpu().numpy())
                 correct_labels.append(target_cat.data.cpu().numpy())
                 correct_confs.append(correct_pred_conf)
@@ -492,7 +508,7 @@ class SimpleMLPDecoder(nn.Module):
                 out, attn, hidden_rep = self.forward(encoder_outputs, encoder_lens, inp_cat, i, prev_emb=hidden_rep,
                                                      use_prev_emb=self.prev_emb,attn_mask=attn_mask)
                 if renormalize:
-                    if renormalize == 'level':
+                    if not self.multi_class and renormalize == 'level':
                         out = self.mask_level(out,i)
                     elif renormalize == 'category':
                         out = self.mask_category(out,inp_cat)
@@ -511,6 +527,11 @@ class SimpleMLPDecoder(nn.Module):
                 loss += loss_fn(out, target_cat) * loss_focus[i] + attn_penalty_coeff * attn_penalty
                 #out = self.mask_renormalize(inp_cat, out)
                 pred_logits, out_pred = torch.max(out.data, 1)
+                # Correct for classes if self.multi_class
+                if self.multi_class:
+                    out_pred += torch.ones(out_pred.size())
+                    if i > 0:
+                        out_pred += torch.ones(out_pred.size()) * self.label_sizes[i - 1]
                 correct_idx = (out_pred == target_cat.data)
                 incorrect_idx = 1 - correct_idx
                 acc = correct_idx.float().mean()
@@ -535,7 +556,7 @@ class SimpleMLPDecoder(nn.Module):
                 #level_cs.append(torch.sum(level_correct))
 
                 accs.append(acc)
-                attns.append(attn)
+                attns.append(self.convert_cpu(attn))
                 predictions.append(out_pred.cpu().numpy())
                 correct_labels.append(target_cat.data.cpu().numpy())
                 correct_confs.append(correct_pred_conf)
@@ -622,6 +643,13 @@ class SimpleMLPDecoder(nn.Module):
 
     def label2category(self, label, level):
         return self.label2id['l{}_{}'.format(label, level)]
+
+    def convert_cpu(self, attn):
+        if type(attn) == list:
+            attn = np.array([a.data.cpu().numpy() for a in attn])
+        elif type(attn) == Variable:
+            attn = attn.data.cpu().numpy()
+        return attn
 
 
 def get_attn_padding_mask(seq_q, seq_k):
