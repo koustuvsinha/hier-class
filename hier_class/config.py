@@ -350,8 +350,6 @@ def dbp_variation_3():
     clean = True
     single_attention = True
     n_heads = [8, 8, 8]
-    lr_patience = 30
-    batch_size = 16
 
 @ex.named_config
 def dbp_variation_4():
