@@ -442,8 +442,6 @@ class SimpleMLPDecoder(nn.Module):
                         out = self.mask_level(out,i)
                     elif renormalize == 'category':
                         out = self.mask_category(out,inp_cat)
-                    else:
-                        raise NotImplementedError("renormalization scheme not implemented")
 
                 out = self.temp_logsoftmax(out, self.temperature)
                 target_cat = categories[:, i+1]
@@ -512,8 +510,6 @@ class SimpleMLPDecoder(nn.Module):
                         out = self.mask_level(out,i)
                     elif renormalize == 'category':
                         out = self.mask_category(out,inp_cat)
-                    else:
-                        raise NotImplementedError("renormalization scheme not implemented")
 
                 out = self.temp_logsoftmax(out, self.temperature)
                 target_cat = categories[:, i + 1]
