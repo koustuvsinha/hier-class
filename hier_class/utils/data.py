@@ -127,7 +127,8 @@ class Data_Utility(data.Dataset):
                 l_2 = gen_class_id(row, 'l2')
                 l_3 = gen_class_id(row, 'l3')
                 text = row['text']
-                text = text.lower()
+                if not self.clean:
+                    text = text.lower()
                 if '<sent>' in text:
                     # data has been sentence tokenized
                     text = text.split('<sent>')
