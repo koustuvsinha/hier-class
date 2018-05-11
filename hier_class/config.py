@@ -69,6 +69,7 @@ def exp_config():
     renormalize = 'level' # level -> for level masking, category -> for tree masking
     single_attention = True # for scaled attention use only one attention layer for all
     attn_penalty = False
+    n_layers = 1
 
 ### Web of Science experiments
 
@@ -158,9 +159,11 @@ def wos_variation_10():
 
 @ex.named_config
 def wos_variation_11():
+    # score: l1 : 0.93, l2: 0.75
     exp_name = 'wos_maxpool'
     prev_emb = True
     attention_type = 'no_attention'
+    n_layers = 2
 
 @ex.named_config
 def wos_variation_12():
@@ -184,6 +187,126 @@ def wos_variation_13():
     attn_penalty = True
     lr_patience=30
     epochs=30
+
+@ex.named_config
+def wos_variation_14():
+    exp_name = 'wos_maxpool_first'
+    prev_emb = False
+    attention_type = 'no_attention'
+    cat_emb_dim = 200
+    embedding_dim = 100
+    mlp_hidden_dim = 100
+    lr_patience=30
+    epochs=30
+    use_embedding = True
+    level = 1
+
+@ex.named_config
+def wos_variation_15():
+    exp_name = 'wos_pretrained'
+    prev_emb = False
+    attention_type = 'no_attention'
+    cat_emb_dim = 200
+    embedding_dim = 100
+    mlp_hidden_dim = 100
+    lr_patience=30
+    epochs=30
+    clean=True
+    data_path = 'wos_data_new_clean'
+    use_embedding = True
+
+@ex.named_config
+def wos_variation_16():
+    exp_name = 'wos_pretrained_2'
+    prev_emb = True
+    attention_type = 'no_attention'
+    cat_emb_dim = 200
+    embedding_dim = 100
+    mlp_hidden_dim = 100
+    optimizer = 'rmsprop'
+    data_path = 'wos_data_new_clean'
+    weight_decay = 0
+    lr_patience=30
+    epochs=30
+    use_embedding = True
+
+@ex.named_config
+def wos_variation_17():
+    exp_name = 'wos_pretrained_2'
+    prev_emb = True
+    attention_type = 'no_attention'
+    cat_emb_dim = 200
+    embedding_dim = 100
+    mlp_hidden_dim = 100
+    optimizer = 'rmsprop'
+    data_path = 'wos_data_new_clean'
+    weight_decay = 0
+    lr_patience=30
+    epochs=30
+    n_layers=2
+    use_embedding = True
+
+@ex.named_config
+def wos_variation_18():
+    exp_name = 'wos_pretrained_single'
+    prev_emb = True
+    attention_type = 'no_attention'
+    cat_emb_dim = 200
+    embedding_dim = 100
+    mlp_hidden_dim = 100
+    optimizer = 'rmsprop'
+    data_path = 'wos_data_new_clean'
+    lr_factor=0.5
+    epochs=30
+    n_layers=2
+    use_embedding = True
+    level = 0
+    renormalize = False
+
+@ex.named_config
+def wos_variation_19():
+    exp_name = 'wos_pretrained_self'
+    prev_emb = True
+    attention_type = 'self'
+    cat_emb_dim = 100
+    embedding_dim = 100
+    mlp_hidden_dim = 100
+    optimizer = 'rmsprop'
+    data_path = 'wos_data_new_clean'
+    lr_factor=0.5
+    epochs=30
+    n_layers=2
+    use_embedding = True
+    single_attention = True
+    level = 0
+    renormalize = False
+
+@ex.named_config
+def wos_variation_20():
+    exp_name = 'wos_pretrained_full_vocab'
+    prev_emb = True
+    attention_type = 'no_attention'
+    cat_emb_dim = 200
+    embedding_dim = 100
+    mlp_hidden_dim = 100
+    optimizer = 'rmsprop'
+    data_path = 'wos_data_new_clean'
+    lr_factor=0.5
+    epochs=30
+    n_layers=2
+    use_embedding = True
+    level = 0
+    renormalize = False
+    data_path = 'wos_full_vocab'
+    max_vocab = -1
+
+@ex.named_config
+def wos_variation_21():
+    # score: l1=0.95, l2=0.858
+    exp_name = 'wos_maxpool_classifier'
+    prev_emb = True
+    attention_type = 'no_attention'
+    n_layers = 2
 
 ### DBpedia experiments
 
@@ -245,7 +368,6 @@ def dbp_variation_5():
     exp_name = 'db_scaled_attention_2'
     prev_emb = True
     attention_type = 'scaled'
-    clean = True
     single_attention = True
     n_heads = [4, 4, 4]
     lr_patience = 30
@@ -260,3 +382,11 @@ def dbp_variation_6():
     single_attention = True
     n_heads = [2, 2, 2]
     lr_patience = 30
+
+@ex.named_config
+def dbp_variation_7():
+    # score: l1-0.9933, l2-0.9681, l3-0.9458
+    exp_name = 'db_maxpool_classifier'
+    prev_emb = True
+    attention_type = 'no_attention'
+    n_layers = 2
