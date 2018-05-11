@@ -71,6 +71,23 @@ class Data_Utility(data.Dataset):
         # return df_texts, df['l3']
         return df
 
+    def WOSread(self, data_loc='',
+            file_name='X.txt', tokenization='word'):
+        df = pandas.read_csv(data_loc + '/' + file_name)
+        df = df.sample(frac=1).reset_index(drop=True)
+        # print(df.head(10))
+        # print("finished loading %d data instances" % len(df))
+        df_texts = [self.tokenize(text) for text in df.text]
+        # df_texts = df.text.apply(self.tokenize)
+        # create dictionary
+        assert len(df_texts) == len(df['l3'])  # l3 is the end level label
+        # print("finished tokenizing %d data instances"%len(df['l3']))
+
+        df = pandas.DataFrame(list(zip(df_texts, list(df['l3']))))
+        df.columns = ['text', 'label']
+        # return df_texts, df['l3']
+        return df
+
     def assign_category_ids(self, y):
         id = 0
         cat2id = {}

@@ -54,6 +54,21 @@ def text_cleaner(text):
         text = text.strip()
     return text.lower()
 
+class LabelDictionary():
+    def __init__(self):
+        self.y2i = {}
+        self.i2y ={}
+
+def create_class_dict(y_labels):
+    dict = LabelDictionary()
+    # this function takes labels in L2 and
+    # transform into range (0,max_classes) for train
+    unique_labels = set(np.unique(y_labels))
+    for i,label in enumerate(unique_labels):
+        dict.y2i[label]=i
+        dict.i2y[i]=label
+    return dict
+
 def read(data_loc='',
         file_name='full_docs_2.csv', tokenization='word'):
     """
@@ -75,17 +90,37 @@ def read(data_loc='',
     # # return df_texts, df['l3']
     return df
 
+class Dataset():
+    def __init__(self):
+        self.x_train=None
+        self.y_train=None
+        self.x_val=None
+        self.y_val=None
+        self.x_test=None
+        self.y_test=None #only the l1 data has test
+        self.label_dict=None
+        self.number_of_classes=None
+        self.childens=None
+
 def loadData_Tokenizer(DATASET, MAX_NB_WORDS,MAX_SEQUENCE_LENGTH):
+    # every dataset has x_train, y_train, x_val, y_val, label_dict, number_of_classes, list of children_data
+    # except the first level dataset also have test
     data_loc = '/home/ml/ksinha4/mlp/hier-class/data'
     df_train = read(data_loc=data_loc, file_name="df_small_train.csv")
     df_test = read(data_loc=data_loc, file_name="df_small_test.csv")
-        
     df_train.text = [clean_str(x) for x in  df_train.text]
     df_test.text = [clean_str(x) for x in df_test.text]
+
+    l1_x_train, l1_y_train, l1_x_val, l1_y_val = \
+        train_test_split(df_train.text, df_train.l1, test_size=0.1, random_state=0)
     number_of_classes_L1 = len(df_train.l1.unique())
-    print(number_of_classes_L1)
+    l1_dict = create_class_dict(df_train.l1.unique())
+
+
     print(df_train.groupby('l1').groups.keys())
-    l2_df = df_train.groupby('l1').groups.keys()
+    print(df_train.groupby('l1').groups.values())
+    l2_df = df_train.groupby('l1').groups
+
     number_of_classes_L2 = np.zeros(number_of_classes_L1,dtype=int) #number of classes in Level 2 that is 1D array with size of (number of classes in level one,1)
 
 
@@ -140,14 +175,7 @@ def loadData_Tokenizer(DATASET, MAX_NB_WORDS,MAX_SEQUENCE_LENGTH):
         L2_Val[y_val[i, 0]].append(y_val[i, 1])
         content_L2_Val[y_val[i, 0]].append(X_val[i])
 
-    def create_class_dict(y_labels):
-        y2i={}
-        # this function takes labels in L2 and 
-        # transform into range (0,max_classes) for train
-        unique_labels = set(np.unique(y_labels))
-        for i,label in enumerate(unique_labels):
-            y2i[label]=i
-        return y2i
+
             
     #transform to np array
     for i in range(0, number_of_classes_L1):

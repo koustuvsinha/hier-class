@@ -49,6 +49,7 @@ def load_data_set(vocab_size,dataset_type):
         data_loc = '/home/ml/ksinha4/datasets/data_WIKI'
         x_train = dataLoader.read(data_loc=data_loc, file_name="full_docs_2_train.csv")
         x_test = dataLoader.read(data_loc=data_loc, file_name="full_docs_2_test.csv")
+        # "/home/ml/ksinha4/datasets/data_WOS/WebOfScience/WOS46985"
     else:
         raise Exception('this dataset type is not implemented yet')
     x_val = x_train[:int(0.1 * len(x_train))]
