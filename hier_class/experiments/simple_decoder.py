@@ -237,6 +237,7 @@ def train(_config, _run):
             del loss
             del accs
             del attns
+            torch.cuda.empty_cache()
             if _config['debug']:
                 break
         ## validate
