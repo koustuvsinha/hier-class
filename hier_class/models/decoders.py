@@ -252,9 +252,9 @@ class SimpleMLPDecoder(nn.Module):
         self.linear = nn.Linear(embedding_dim * mult_factor, mlp_hidden_dim)
         if self.multi_class:
             # TODO: need to correct for proper classes in decoder mode
-            self.classifier_l1 = nn.Linear(mlp_hidden_dim, label_sizes[0])
-            self.classifier_l2 = nn.Linear(mlp_hidden_dim, label_sizes[1])
-            self.classifier_l3 = nn.Linear(mlp_hidden_dim, label_sizes[2])
+            self.classifier_l1 = nn.Linear(mlp_hidden_dim, label_size)
+            self.classifier_l2 = nn.Linear(mlp_hidden_dim, label_size)
+            self.classifier_l3 = nn.Linear(mlp_hidden_dim, label_size)
             self.classifiers = [self.classifier_l1, self.classifier_l2, self.classifier_l3]
         else:
             self.classifier_lall = nn.Linear(mlp_hidden_dim, label_size)
@@ -438,7 +438,7 @@ class SimpleMLPDecoder(nn.Module):
                 out, attn, hidden_rep = self.forward(encoder_outputs, encoder_lens, inp_cat, i, prev_emb=hidden_rep,
                                                      use_prev_emb=self.prev_emb,attn_mask=attn_mask)
                 if renormalize:
-                    if not self.multi_class and renormalize == 'level':
+                    if renormalize == 'level':
                         out = self.mask_level(out,i)
                     elif renormalize == 'category':
                         out = self.mask_category(out,inp_cat)
@@ -452,11 +452,6 @@ class SimpleMLPDecoder(nn.Module):
                 loss += loss_fn(out, target_cat) * loss_focus[i] + attn_penalty_coeff * attn_penalty
                 #out = self.mask_renormalize(inp_cat, out)
                 pred_logits, out_pred = torch.max(out.data, 1)
-                # Correct for classes if self.multi_class
-                if self.multi_class:
-                    out_pred += torch.ones(out_pred.size()).long().cuda()
-                    if i > 0:
-                        out_pred += torch.ones(out_pred.size()).long().cuda() * self.label_sizes[i-1]
 
                 correct_idx = (out_pred == target_cat.data)
                 incorrect_idx = 1 - correct_idx
@@ -506,7 +501,7 @@ class SimpleMLPDecoder(nn.Module):
                 out, attn, hidden_rep = self.forward(encoder_outputs, encoder_lens, inp_cat, i, prev_emb=hidden_rep,
                                                      use_prev_emb=self.prev_emb,attn_mask=attn_mask)
                 if renormalize:
-                    if not self.multi_class and renormalize == 'level':
+                    if renormalize == 'level':
                         out = self.mask_level(out,i)
                     elif renormalize == 'category':
                         out = self.mask_category(out,inp_cat)
@@ -523,11 +518,6 @@ class SimpleMLPDecoder(nn.Module):
                 loss += loss_fn(out, target_cat) * loss_focus[i] + attn_penalty_coeff * attn_penalty
                 #out = self.mask_renormalize(inp_cat, out)
                 pred_logits, out_pred = torch.max(out.data, 1)
-                # Correct for classes if self.multi_class
-                if self.multi_class:
-                    out_pred += torch.ones(out_pred.size()).long().cuda()
-                    if i > 0:
-                        out_pred += torch.ones(out_pred.size()).long().cuda() * self.label_sizes[i - 1]
                 correct_idx = (out_pred == target_cat.data)
                 incorrect_idx = 1 - correct_idx
                 acc = correct_idx.float().mean()
