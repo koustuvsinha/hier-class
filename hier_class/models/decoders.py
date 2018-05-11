@@ -7,6 +7,7 @@ from torch.autograd import Variable
 from torch.nn.utils.rnn import pack_padded_sequence, pad_packed_sequence
 import random
 from hier_class.models.sublayers import DocumentLevelAttention, DocumentLevelSelfAttention
+from hier_class.utils.masked_softmax import MaskedSoftmaxAndLogSoftmax
 from hier_class.utils import constants as Constants
 import numpy as np
 import time
@@ -169,7 +170,8 @@ class SimpleMLPDecoder(nn.Module):
                  label_sizes=[], label2id={},
                  total_cats=1,pad_token=1, max_categories=1,
                  taxonomy=None,temperature=0.8, max_words=600,
-                 d_k=64, d_v=64,da=350, n_heads=[2,2,8], dropout=0,gpu=0, prev_emb=False, top_level_cat=0,
+                 n_layers=1, d_k=64, d_v=64,da=350, n_heads=[2,2,8],
+                 dropout=0,gpu=0, prev_emb=False, top_level_cat=0,
                  use_attn_mask=False,
                  attention_type='scaled',
                  embedding=None,
@@ -215,6 +217,7 @@ class SimpleMLPDecoder(nn.Module):
         self.prev_emb = prev_emb
         self.use_attn_mask = use_attn_mask
         self.attn_penalty = attn_penalty
+        self.n_layers = n_layers
         self.embedding = nn.Embedding(
             vocab_size,
             embedding_dim,
@@ -241,9 +244,13 @@ class SimpleMLPDecoder(nn.Module):
         mult_factor = 2
         if prev_emb:
             mult_factor = 3
-        self.encoder = nn.LSTM(embedding_dim, embedding_dim, bidirectional=True, batch_first=True)
+        self.encoder = nn.LSTM(embedding_dim, embedding_dim, dropout=dropout,
+                               num_layers=n_layers, bidirectional=True, batch_first=True)
         self.linear = nn.Linear(embedding_dim * mult_factor, mlp_hidden_dim)
-        self.linear2 = nn.Linear(mlp_hidden_dim, label_size)
+        self.classifier_l1 = nn.Linear(mlp_hidden_dim, label_size)
+        self.classifier_l2 = nn.Linear(mlp_hidden_dim, label_size)
+        self.classifier_l3 = nn.Linear(mlp_hidden_dim, label_size)
+        self.classifiers = [self.classifier_l1, self.classifier_l2, self.classifier_l3]
         self.relu = nn.ReLU()
         self.tanh = nn.Tanh()
         self.dropout = nn.Dropout(dropout)
@@ -292,7 +299,8 @@ class SimpleMLPDecoder(nn.Module):
             elif 'weight' in name:
                 init.xavier_normal(param)
         init.xavier_normal(self.linear.weight)
-        init.xavier_normal(self.linear2.weight)
+        init.xavier_normal(self.classifier_l1.weight)
+        init.xavier_normal(self.classifier_l2.weight)
 
 
 
@@ -347,6 +355,8 @@ class SimpleMLPDecoder(nn.Module):
         elif self.attention_type == 'no_attention':
             # Maxpool
             doc_emb = torch.max(encoder_outputs, 1)[0]
+            # or mean pool
+            # doc_emb = torch.mean(encoder_outputs, 1).squeeze()
             attn = None
         else:
             raise NotImplementedError("attention type not implemented")
@@ -354,7 +364,8 @@ class SimpleMLPDecoder(nn.Module):
             doc_emb = torch.cat((prev_emb, doc_emb), 1)
         doc_emb = doc_emb.view(doc_emb.size(0), -1)
         hidden_rep = self.tanh(self.linear(self.dropout(doc_emb)))
-        logits = self.linear2(self.dropout(hidden_rep))
+        x = self.dropout(hidden_rep)
+        logits = self.classifiers[level](x)
         #x = self.linear(doc_emb)
         #hidden_rep = self.dropout(x)
         #x = self.relu(hidden_rep)
@@ -399,6 +410,7 @@ class SimpleMLPDecoder(nn.Module):
         correct_confs = []
         incorrect_confs = []
         levels = len(self.label_sizes)
+        #pdb.set_trace()
 
         use_tf = True if (random.random() < tf_ratio) else False
         if use_tf:
@@ -422,6 +434,7 @@ class SimpleMLPDecoder(nn.Module):
                         out = self.mask_category(out,inp_cat)
                     else:
                         raise NotImplementedError("renormalization scheme not implemented")
+
                 out = self.temp_logsoftmax(out, self.temperature)
                 target_cat = categories[:, i+1]
                 if self.attn_penalty:
@@ -485,6 +498,7 @@ class SimpleMLPDecoder(nn.Module):
                         out = self.mask_category(out,inp_cat)
                     else:
                         raise NotImplementedError("renormalization scheme not implemented")
+
                 out = self.temp_logsoftmax(out, self.temperature)
                 target_cat = categories[:, i + 1]
                 if batch_masking:
@@ -529,6 +543,9 @@ class SimpleMLPDecoder(nn.Module):
 
         return loss, accs, attns, predictions, correct_labels, correct_confs, incorrect_confs
 
+    def apply_softmax(self, xs, mask, dtype=torch.DoubleTensor):
+        return MaskedSoftmaxAndLogSoftmax(dtype)(xs, mask)
+
     def mask_level(self, logits, level=0):
         """
         Given level, mask out all the other level classes
@@ -536,7 +553,7 @@ class SimpleMLPDecoder(nn.Module):
         :param logits: batch x classes
         :return:
         """
-        mask = [1]*(sum(self.label_sizes) + 1) # 912
+        mask = [0]*(sum(self.label_sizes) + 1) # 912
         label_indices = {}
         ct = 1
         for lv,lbs in enumerate(self.label_sizes):
@@ -545,9 +562,15 @@ class SimpleMLPDecoder(nn.Module):
                 label_indices[lv].append(ct)
                 ct +=1
         for indc in label_indices[level]:
-            mask[indc] = 0
+            mask[indc] = 1
+        row_mask = [mask for i in range(logits.size(0))]
+        #pdb.set_trace()
+        #
         #print(mask)
+        #row_mask = Variable(torch.ByteTensor(row_mask).cuda()).double()
         mask = torch.ByteTensor(mask).cuda()
+        mask = mask ^ 1
+        #probs, logits = self.apply_softmax(logits.double(), row_mask)
         logits.data.masked_fill_(mask, -float('inf'))
         return logits
 
