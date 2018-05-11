@@ -226,6 +226,7 @@ def train(_config, _run):
                                             target_level=1,
                                             attn_penalty_coeff=_config['attn_penalty_coeff'],
                                             renormalize=_config['renormalize'])
+            torch.cuda.empty_cache()
             loss.backward()
             #m_params = [p for p in model.parameters() if p.requires_grad]
             #nn.utils.clip_grad_norm(m_params, _config['clip_grad'])
