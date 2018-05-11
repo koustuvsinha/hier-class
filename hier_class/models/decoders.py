@@ -308,7 +308,7 @@ class SimpleMLPDecoder(nn.Module):
         init.xavier_normal(self.linear.weight)
         init.xavier_normal(self.classifier_l1.weight)
         init.xavier_normal(self.classifier_l2.weight)
-
+        init.xavier_normal(self.classifier_l3.weight)
 
 
 
@@ -346,6 +346,7 @@ class SimpleMLPDecoder(nn.Module):
         """
         cat_emb = self.category_embedding(inp_cat)
         cat_emb = cat_emb.unsqueeze(1)
+        torch.cuda.empty_cache()
         if self.attention_type == 'scaled':
             if self.single_attention:
                 doc_emb, attn = self.attention_0(cat_emb, encoder_outputs, encoder_outputs,
