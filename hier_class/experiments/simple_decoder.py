@@ -75,6 +75,8 @@ def train(_config, _run):
         logging.info('Classes in level {} = {}'.format(level, nl))
         cat_per_level.append(nl)
         label_size += nl
+        if _config['level'] != -1:
+            break
     print(cat_per_level)
 
     if _config['level'] != -1:
@@ -185,6 +187,7 @@ def train(_config, _run):
     logging.info("With focus : {}".format(_config['loss_focus']))
     all_step = 0
     for epoch in range(epochs):
+        print(epoch)
         stats.next()
         logging.info("Getting data")
         logging.info("Num Train Rows: {}".format(len(data.train_indices)))
@@ -225,7 +228,7 @@ def train(_config, _run):
                                             renormalize=_config['renormalize'])
             loss.backward()
             #m_params = [p for p in model.parameters() if p.requires_grad]
-            nn.utils.clip_grad_norm(m_params, _config['clip_grad'])
+            #nn.utils.clip_grad_norm(m_params, _config['clip_grad'])
             optimizer.step()
             stats.update_train(loss.data[0], accs)
             ## free up memory
