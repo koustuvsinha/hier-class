@@ -454,9 +454,9 @@ class SimpleMLPDecoder(nn.Module):
                 pred_logits, out_pred = torch.max(out.data, 1)
                 # Correct for classes if self.multi_class
                 if self.multi_class:
-                    out_pred += torch.ones(out_pred.size())
+                    out_pred += torch.ones(out_pred.size()).long()
                     if i > 0:
-                        out_pred += torch.ones(out_pred.size()) * self.label_sizes[i-1]
+                        out_pred += torch.ones(out_pred.size()).long() * self.label_sizes[i-1]
 
                 correct_idx = (out_pred == target_cat.data)
                 incorrect_idx = 1 - correct_idx
@@ -525,9 +525,9 @@ class SimpleMLPDecoder(nn.Module):
                 pred_logits, out_pred = torch.max(out.data, 1)
                 # Correct for classes if self.multi_class
                 if self.multi_class:
-                    out_pred += torch.ones(out_pred.size())
+                    out_pred += torch.ones(out_pred.size()).long()
                     if i > 0:
-                        out_pred += torch.ones(out_pred.size()) * self.label_sizes[i - 1]
+                        out_pred += torch.ones(out_pred.size()).long() * self.label_sizes[i - 1]
                 correct_idx = (out_pred == target_cat.data)
                 incorrect_idx = 1 - correct_idx
                 acc = correct_idx.float().mean()
