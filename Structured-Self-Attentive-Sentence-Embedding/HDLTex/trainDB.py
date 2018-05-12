@@ -34,7 +34,6 @@ if __name__ == "__main__":
     d_train, df_test, word_index, embeddings_index =  \
             loadData_Tokenizer(DATASET, MAX_NB_WORDS,MAX_SEQUENCE_LENGTH)
     print("Loading Data is Done")
-    print(df_test)
 
     # initiate the models
     counter = 1 #keep track of number of models created
@@ -52,23 +51,23 @@ if __name__ == "__main__":
 
     HDLTex1 = []  # Level 2 models is list of Deep Structure
     HDLTex2=[[] for i in range(d_train.number_of_classes)]  # Level 3 models is list of list of Deep Structure
-    # for i in range(0, d_train.number_of_classes):
-    #     print('Create Sub model of level 1: ', i)
-    #     HDLTex1.append(Sequential())
-    #     HDLTex1[i] = BuildModel.buildModel_RNN(word_index, embedding_matrix,
-    #                                           d_train.childs[i].number_of_classes,
-    #                                           MAX_SEQUENCE_LENGTH, EMBEDDING_DIM)
-    #     counter +=1
-    # #
+    for i in range(0, d_train.number_of_classes):
+        print('Create Sub model of level 1: ', i)
+        HDLTex1.append(Sequential())
+        HDLTex1[i] = BuildModel.buildModel_RNN(word_index, embedding_matrix,
+                                              d_train.childs[i].number_of_classes,
+                                              MAX_SEQUENCE_LENGTH, EMBEDDING_DIM)
+        counter +=1
     #
-    # for i in range(0, d_train.number_of_classes):
-    #     for j in range(0, d_train.childs[i].number_of_classes):
-    #         print('Create Sub model of level 2:', i, j)
-    #         HDLTex2[i].append(Sequential())
-    #         HDLTex2[i][j] = BuildModel.buildModel_RNN(word_index, embedding_matrix,
-    #                                                d_train.childs[i].childs[j].number_of_classes,
-    #                                                MAX_SEQUENCE_LENGTH, EMBEDDING_DIM)
-    #         counter += 1
+
+    for i in range(0, d_train.number_of_classes):
+        for j in range(0, d_train.childs[i].number_of_classes):
+            print('Create Sub model of level 2:', i, j)
+            HDLTex2[i].append(Sequential())
+            HDLTex2[i][j] = BuildModel.buildModel_RNN(word_index, embedding_matrix,
+                                                   d_train.childs[i].childs[j].number_of_classes,
+                                                   MAX_SEQUENCE_LENGTH, EMBEDDING_DIM)
+            counter += 1
 
     print("%d number of models have been created"%counter)
     

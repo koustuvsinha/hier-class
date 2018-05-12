@@ -162,9 +162,6 @@ def loadData_Tokenizer(DATASET, MAX_NB_WORDS, MAX_SEQUENCE_LENGTH):
     print('Found %s unique tokens.' % len(word_index))
 
     x_pad_test = pad_sequences(test_sequences, maxlen=MAX_SEQUENCE_LENGTH)
-    print(len(x_pad_test))
-    print(len(df_test))
-    print(type(x_pad_test))
 
     x_train_seq = pad_sequences(train_sequences, maxlen=MAX_SEQUENCE_LENGTH)
     x_test_seq = pad_sequences(test_sequences,maxlen=MAX_SEQUENCE_LENGTH)
