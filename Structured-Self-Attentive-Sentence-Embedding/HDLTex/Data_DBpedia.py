@@ -9,10 +9,11 @@ import numpy as np
 import os
 import pandas
 
-
 ''' Location of the dataset'''
 path_WOS = WOS.download_and_extract()
 GLOVE_DIR = GloVe.download_and_extract()
+
+
 # print(GLOVE_DIR)
 
 def clean_str(string):
@@ -24,6 +25,7 @@ def clean_str(string):
     string = re.sub(r"\'", "", string)
     string = re.sub(r"\"", "", string)
     return string.strip().lower()
+
 
 def text_cleaner(text):
     text = text.replace(".", "")
@@ -54,23 +56,26 @@ def text_cleaner(text):
         text = text.strip()
     return text.lower()
 
+
 class LabelDictionary():
     def __init__(self):
         self.y2i = {}
-        self.i2y ={}
+        self.i2y = {}
+
 
 def create_class_dict(y_labels):
     dict = LabelDictionary()
     # this function takes labels in L2 and
     # transform into range (0,max_classes) for train
     unique_labels = set(np.unique(y_labels))
-    for i,label in enumerate(unique_labels):
-        dict.y2i[label]=i
-        dict.i2y[i]=label
+    for i, label in enumerate(unique_labels):
+        dict.y2i[label] = i
+        dict.i2y[i] = label
     return dict
 
+
 def read(data_loc='',
-        file_name='full_docs_2.csv', tokenization='word'):
+         file_name='full_docs_2.csv', tokenization='word'):
     """
     Given data type and location, load data
     :param data_loc: location of dataset
@@ -90,109 +95,74 @@ def read(data_loc='',
     # # return df_texts, df['l3']
     return df
 
+
 class Dataset():
     def __init__(self):
-        self.x_train=None
-        self.y_train=None
-        self.x_val=None
-        self.y_val=None
-        self.x_test=None
-        self.y_test=None #only the l1 data has test
-        self.label_dict=None
-        self.number_of_classes=None
-        self.childens=None
+        self.x_train = None
+        self.y_train = None
+        self.x_val = None
+        self.y_val = None
+        self.x_test = None
+        self.y_test = None  # only the l1 data has test
+        self.label_dict = None
+        self.number_of_classes = None
+        self.childens = None
 
-def loadData_Tokenizer(DATASET, MAX_NB_WORDS,MAX_SEQUENCE_LENGTH):
+
+class Dataset():
+    def __init__(self):
+        self.x_train = None
+        self.y_train = None
+        self.x_val = None
+        self.y_val = None
+        self.dict = None
+        self.number_of_classes = None
+        self.childs = None
+
+
+def data_pipline(df_train, level=1, stop_level=3):
+    d = Dataset()
+    d.number_of_classes = len(df_train['l%d' % level].unique())
+    d.dict = create_class_dict(df_train['l%d' % level].unique())
+    d.x_train, d.x_val, d.y_train, d.y_val = \
+        train_test_split(df_train.text,
+                         df_train['l%d' % level].apply(lambda x: d.dict.y2i[x]),
+                         test_size=0.1, random_state=0)
+
+    children_data = [None] * len(d.dict.y2i)
+    next_level = 1 + level
+    if stop_level + 1 == next_level:
+        d_childs = None
+    else:
+        for i in range(len(d.dict.i2y.keys())):
+            children_data[i] = data_pipline(df_train[df_train['l%d' % level] == d.dict.i2y[i]],
+                                            level=next_level)
+        d.childs = children_data
+    return d
+
+
+def loadData_Tokenizer(DATASET, MAX_NB_WORDS, MAX_SEQUENCE_LENGTH):
     # every dataset has x_train, y_train, x_val, y_val, label_dict, number_of_classes, list of children_data
     # except the first level dataset also have test
     data_loc = '/home/ml/ksinha4/mlp/hier-class/data'
     df_train = read(data_loc=data_loc, file_name="df_small_train.csv")
     df_test = read(data_loc=data_loc, file_name="df_small_test.csv")
-    df_train.text = [clean_str(x) for x in  df_train.text]
+    df_train.text = [clean_str(x) for x in df_train.text]
     df_test.text = [clean_str(x) for x in df_test.text]
 
-    l1_x_train, l1_y_train, l1_x_val, l1_y_val = \
-        train_test_split(df_train.text, df_train.l1, test_size=0.1, random_state=0)
-    number_of_classes_L1 = len(df_train.l1.unique())
-    l1_dict = create_class_dict(df_train.l1.unique())
-
-
-    print(df_train.groupby('l1').groups.keys())
-    print(df_train.groupby('l1').groups.values())
-    l2_df = df_train.groupby('l1').groups
-
-    number_of_classes_L2 = np.zeros(number_of_classes_L1,dtype=int) #number of classes in Level 2 that is 1D array with size of (number of classes in level one,1)
-
-
     tokenizer = Tokenizer(num_words=MAX_NB_WORDS)
-    tokenizer.fit_on_texts(content)
-    sequences = tokenizer.texts_to_sequences(content)
+    tokenizer.fit_on_texts(df_train.text)
+    sequences = tokenizer.texts_to_sequences(df_train.text)
     word_index = tokenizer.word_index
-
     print('Found %s unique tokens.' % len(word_index))
 
-    content = pad_sequences(sequences, maxlen=MAX_SEQUENCE_LENGTH)
+    df_train.text = pad_sequences(sequences, maxlen=MAX_SEQUENCE_LENGTH)
+    df_test.text = pad_sequences(tokenizer.texts_to_sequences(df_test.text),
+                                 maxlen=MAX_SEQUENCE_LENGTH)
+    print("content shape", df_train.text.shape)
 
-    indices = np.arange(content.shape[0])
-    np.random.shuffle(indices)
-    content = content[indices]
-    Label = Label[indices]
-    print("content shape",content.shape)
-
-    X_train, X_test, y_train, y_test = \
-        train_test_split(content, Label, test_size=0.1, random_state=0)
-    X_train, X_val, y_train, y_val = \
-        train_test_split(X_train, y_train, test_size=0.1, random_state=0)
-    print("%d for training, %d for val, %d for testing"%(len(y_train),len(y_val),len(y_test)))
-
-    L2_Train = []
-    L2_Val = []
-    content_L2_Train = []
-    content_L2_Val = []
-    L2_class_dict=[]
-    '''
-    crewate #L1 number of train and test sample for level two 
-    of Hierarchical Deep Learning models
-    '''
-    for i in range(0, number_of_classes_L1):
-        L2_Train.append([])
-        L2_Val.append([])
-        content_L2_Train.append([])
-        content_L2_Val.append([])
-        # L2_class_dict.append({})
-
-        X_train = np.array(X_train)
-        X_val= np.array(X_val)
-        
-    for i in range(0, X_train.shape[0]):
-        L2_Train[y_train[i, 0]].append(y_train[i, 1])
-        content_L2_Train[y_train[i, 0]].append(X_train[i])
+    d_train = data_pipline(df_train, level=1, stop_level=3)
     
-    # number_of_classes_L2[y_train[i, 0]] = \
-    #     max(number_of_classes_L2[y_train[i, 0]], (y_train[i, 1] + 1))
-
-    for i in range(0, X_val.shape[0]):
-        L2_Val[y_val[i, 0]].append(y_val[i, 1])
-        content_L2_Val[y_val[i, 0]].append(X_val[i])
-
-
-            
-    #transform to np array
-    for i in range(0, number_of_classes_L1):
-        L2_Train[i] = np.array(L2_Train[i])
-        L2_Val[i] = np.array(L2_Val[i])
-        content_L2_Train[i] = np.array(content_L2_Train[i])
-        content_L2_Val[i] = np.array(content_L2_Val[i])
-        #add number of classes for each sub-classifier
-        number_of_classes_L2[i] = len(np.unique(L2_Train[i]))
-        L2_class_dict.append(create_class_dict(L2_Train[i]))
-        # create class_dict for each sub-class
-    
-    #translate L2 labels by the dict
-    for i in range(0, number_of_classes_L1):
-        L2_Train[i] = np.array([L2_class_dict[i][y] for y in L2_Train[i]])
-        L2_Val[i] = np.array([L2_class_dict[i][y] for y in L2_Val[i]])
-
     embeddings_index = {}
     '''
     For CNN and RNN, we used the text vector-space models using $100$ dimensions as described in Glove. A vector-space model is a mathematical mapping of the word space
@@ -206,21 +176,18 @@ def loadData_Tokenizer(DATASET, MAX_NB_WORDS,MAX_SEQUENCE_LENGTH):
         try:
             coefs = np.asarray(values[1:], dtype='float32')
         except:
-            print("Warnning"+str(values)+" in" + str(line))
+            print("Warnning" + str(values) + " in" + str(line))
         embeddings_index[word] = coefs
     f.close()
     print('Total %s word vectors.' % len(embeddings_index))
-    return (X_train, y_train, X_val, y_val, X_test, y_test, 
-            content_L2_Train, L2_Train, content_L2_Val, L2_Val,
-            number_of_classes_L2,L2_class_dict,
-            word_index,embeddings_index,number_of_classes_L1)
+    return (d_train, df_test, word_index, embeddings_index)
 
 
 def loadData():
     WOS.download_and_extract()
-    fname = os.path.join(path_WOS,"WebOfScience/WOS5736/X.txt")
-    fnamek = os.path.join(path_WOS,"WebOfScience/WOS5736/YL1.txt")
-    fnameL2 = os.path.join(path_WOS,"WebOfScience/WOS5736/YL2.txt")
+    fname = os.path.join(path_WOS, "WebOfScience/WOS5736/X.txt")
+    fnamek = os.path.join(path_WOS, "WebOfScience/WOS5736/YL1.txt")
+    fnameL2 = os.path.join(path_WOS, "WebOfScience/WOS5736/YL2.txt")
     with open(fname) as f:
         content = f.readlines()
         content = [text_cleaner(x) for x in content]
@@ -232,7 +199,7 @@ def loadData():
         contentL2 = [x.strip() for x in contentL2]
     Label = np.matrix(contentk, dtype=int)
     Label = np.transpose(Label)
-    number_of_classes_L1 = np.max(Label)+1  # number of classes in Level 1
+    number_of_classes_L1 = np.max(Label) + 1  # number of classes in Level 1
 
     Label_L2 = np.matrix(contentL2, dtype=int)
     Label_L2 = np.transpose(Label_L2)
@@ -241,9 +208,9 @@ def loadData():
     print(Label_L2.shape)
     Label = np.column_stack((Label, Label_L2))
 
-    number_of_classes_L2 = np.zeros(number_of_classes_L1,dtype=int)
+    number_of_classes_L2 = np.zeros(number_of_classes_L1, dtype=int)
 
-    X_train, X_test, y_train, y_test  = train_test_split(content, Label, test_size=0.2,random_state= 0)
+    X_train, X_test, y_train, y_test = train_test_split(content, Label, test_size=0.2, random_state=0)
 
     vectorizer_x = CountVectorizer()
     X_train = vectorizer_x.fit_transform(X_train).toarray()
@@ -260,10 +227,9 @@ def loadData():
         content_L2_Train.append([])
         content_L2_Test.append([])
 
-
     for i in range(0, X_train.shape[0]):
         L2_Train[y_train[i, 0]].append(y_train[i, 1])
-        number_of_classes_L2[y_train[i, 0]] = max(number_of_classes_L2[y_train[i, 0]],(y_train[i, 1]+1))
+        number_of_classes_L2[y_train[i, 0]] = max(number_of_classes_L2[y_train[i, 0]], (y_train[i, 1] + 1))
         content_L2_Train[y_train[i, 0]].append(X_train[i])
 
     for i in range(0, X_test.shape[0]):
@@ -275,4 +241,5 @@ def loadData():
         L2_Test[i] = np.array(L2_Test[i])
         content_L2_Train[i] = np.array(content_L2_Train[i])
         content_L2_Test[i] = np.array(content_L2_Test[i])
-    return (X_train,y_train,X_test,y_test,content_L2_Train,L2_Train,content_L2_Test,L2_Test,number_of_classes_L2)
+    return (
+        X_train, y_train, X_test, y_test, content_L2_Train, L2_Train, content_L2_Test, L2_Test, number_of_classes_L2)

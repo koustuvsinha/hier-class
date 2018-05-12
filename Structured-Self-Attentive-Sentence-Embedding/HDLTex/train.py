@@ -4,7 +4,7 @@ os.environ['KERAS_BACKEND'] = 'tensorflow'
 
 import numpy as np
 from keras.models import Sequential
-import Data_DBpedia
+import Data_helper
 import BuildModel
 import eval
 
@@ -22,7 +22,7 @@ if __name__ == "__main__":
     epochs = 40
     L1_model =2 # 0 is DNN, 1 is CNN, and 2 is RNN for Level 1
     L2_model =2 # 0 is DNN, 1 is CNN, and 2 is RNN for Level 2
-    DATASET = 2
+    DATASET = 3
     np.set_printoptions(threshold=np.inf)
     '''
     location of input data in two ways 
@@ -35,7 +35,7 @@ if __name__ == "__main__":
     content_L2_Train, L2_Train, content_L2_Val, L2_Val,\
     number_of_classes_L2,L2_dict_y2i,\
     word_index, embeddings_index,number_of_classes_L1 =  \
-            Data_DBpedia.loadData_Tokenizer(DATASET, MAX_NB_WORDS,MAX_SEQUENCE_LENGTH)
+            Data_helper.loadData_Tokenizer(DATASET, MAX_NB_WORDS,MAX_SEQUENCE_LENGTH)
     L2_dict_i2y = [dict((v, k) for k, v in d.items()) for d in L2_dict_y2i]
     print("Loading Data is Done")
 
