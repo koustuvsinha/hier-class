@@ -31,9 +31,9 @@ def evaluate(l1_model,l2_models,L2_dict_i2y,x_test,y_test):
 def evaluateDB(l1_model,l2_models,l3_models,d_train,df_test):
     """this model evaluate the trained hierarchical models"""
     l1_y_pred, l2_y_pred, l3_y_pred = [], [], []
-    l1_y_true, l2_y_true, l3_y_pred = [], [], []
     for i in range(len(df_test)):
-        x_t = np.array([df_test.text[i]])
+        x_t = np.array(df_test.text[i])
+        print(x_t)
         l1_true, l2_true, l3_true = df_test.l1[i],df_test.l2[i],df_test.l3[i]
 
         l1_pred_i = np.argmax(l1_model.predict(x_t)[0])  # get the pred from l1 model

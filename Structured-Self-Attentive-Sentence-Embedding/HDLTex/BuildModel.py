@@ -34,14 +34,8 @@ nClasses is number of classes,
 MAX_SEQUENCE_LENGTH is maximum lenght of text sequences, 
 EMBEDDING_DIM is an int value for dimention of word embedding look at data_helper.py 
 '''
-def buildModel_RNN(word_index, embeddings_index, nClasses, MAX_SEQUENCE_LENGTH, EMBEDDING_DIM):
+def buildModel_RNN(word_index, embedding_matrix, nClasses, MAX_SEQUENCE_LENGTH, EMBEDDING_DIM):
     model = Sequential()
-    embedding_matrix = np.random.random((len(word_index) + 1, EMBEDDING_DIM))
-    for word, i in word_index.items():
-        embedding_vector = embeddings_index.get(word)
-        if embedding_vector is not None:
-            # words not found in embedding index will be all-zeros.
-            embedding_matrix[i] = embedding_vector
     model.add(Embedding(len(word_index) + 1,
                                 EMBEDDING_DIM,
                                 weights=[embedding_matrix],
