@@ -104,7 +104,7 @@ def loadData_Tokenizer(DATASET, MAX_NB_WORDS,MAX_SEQUENCE_LENGTH):
 
     number_of_classes_L2 = np.zeros(number_of_classes_L1,dtype=int) #number of classes in Level 2 that is 1D array with size of (number of classes in level one,1)
 
-
+    print(type(content[:10]))
     tokenizer = Tokenizer(num_words=MAX_NB_WORDS)
     tokenizer.fit_on_texts(content)
     sequences = tokenizer.texts_to_sequences(content)

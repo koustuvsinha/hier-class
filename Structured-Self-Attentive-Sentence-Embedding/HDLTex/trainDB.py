@@ -34,6 +34,7 @@ if __name__ == "__main__":
     d_train, df_test, word_index, embeddings_index =  \
             loadData_Tokenizer(DATASET, MAX_NB_WORDS,MAX_SEQUENCE_LENGTH)
     print("Loading Data is Done")
+    print(df_test)
 
     # initiate the models
     counter = 1 #keep track of number of models created

@@ -150,16 +150,29 @@ def loadData_Tokenizer(DATASET, MAX_NB_WORDS, MAX_SEQUENCE_LENGTH):
     df_train.text = [clean_str(x) for x in df_train.text]
     df_test.text = [clean_str(x) for x in df_test.text]
 
+    print('Start tokenization.')
+    x_train = df_train.text.values
+    x_test = df_test.text.values
+
     tokenizer = Tokenizer(num_words=MAX_NB_WORDS)
-    tokenizer.fit_on_texts(df_train.text)
-    sequences = tokenizer.texts_to_sequences(df_train.text)
+    tokenizer.fit_on_texts(x_train)
+    train_sequences = tokenizer.texts_to_sequences(x_train)
+    test_sequences = tokenizer.texts_to_sequences(x_test)
     word_index = tokenizer.word_index
     print('Found %s unique tokens.' % len(word_index))
 
-    df_train.text = pad_sequences(sequences, maxlen=MAX_SEQUENCE_LENGTH)
-    df_test.text = pad_sequences(tokenizer.texts_to_sequences(df_test.text),
-                                 maxlen=MAX_SEQUENCE_LENGTH)
+    x_pad_test = pad_sequences(test_sequences, maxlen=MAX_SEQUENCE_LENGTH)
+    print(len(x_pad_test))
+    print(len(df_test))
+    print(type(x_pad_test))
+
+    x_train_seq = pad_sequences(train_sequences, maxlen=MAX_SEQUENCE_LENGTH)
+    x_test_seq = pad_sequences(test_sequences,maxlen=MAX_SEQUENCE_LENGTH)
+    df_train['text'] = x_train_seq.tolist()
+    df_test['text'] = x_test_seq.tolist()
+
     print("content shape", df_train.text.shape)
+
 
     d_train = data_pipline(df_train, level=1, stop_level=3)
     
