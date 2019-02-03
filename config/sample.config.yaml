@@ -1,0 +1,87 @@
+---
+# general params
+gpu : 0
+use_gpu : True
+exp_name : wos_norm_level_self
+baseline : False # either False, or fast / bilstm
+seed : 1111
+overall : True # calculate the overall non-teacher forced version
+# embedding params
+embedding_dim : 300
+use_embedding : False
+fix_embeddings : False
+embedding_file : data/glove.6B.300d.txt
+embedding_saved : glove_embeddings.mod
+# model params
+mlp_hidden_dim : 2000
+load_model : False
+load_model_path : ''
+save_name : model_epoch_{}_step_{}.mod
+batch_size : 64
+epochs : 20
+cat_emb_dim : 300
+model_type : 'attentive' # attentive / pooled
+temperature : 1
+use_rnn : True
+n_layers : 2
+pretrained_lm : False # use pretrained and tuned language model
+## teacher forcing params
+tf_ratio : 1
+tf_anneal : 1
+validation_tf : 0
+teacher_forcing : True # teacher forcing by default should be true
+## attention params
+n_heads : [2,2,2]
+attn_penalty_coeff : 0
+d_k : 64
+d_v : 64
+da : 400
+attention_type : self
+use_attn_mask : False # use attention mask for scaled if required
+single_attention : True # for scaled attention use only one attention layer for all
+attn_penalty : True
+## level params
+level : -1
+levels : 2
+loss_focus : [1,1,1]
+label_weights : [1,1,1]
+dynamic_dictionary : True
+prev_emb : False
+fix_prev_emb : False
+renormalize : 'level' # level -> for level masking, category -> for tree masking
+decoder_ready : True
+multi_class : True
+detach_encoder : False
+use_cat_emb : False
+use_parent_emb : False
+use_projection: True # if True, use previous level embedding to condition attention, else use category to condition
+# optimizer params
+optimizer : adam
+lr : 0.001
+lr_factor : 0.1
+lr_threshold : 0.0001
+lr_patience : 5
+lr_scheduler: plateau # can be plateau or sltr
+clip_grad : 0.5
+momentum : 0.9
+dropout : 0.2
+weight_decay : 0.0001
+# data params
+train_test_split : 0.9
+data_type : WOS
+data_loc : data/WebOfScience/WOS46985
+data_path : wos_train_clean
+file_name : wos_data_train.csv
+test_file_name : wos_data_test.csv
+test_output_name : wos_data_output.csv
+tokenization : word
+clean : True
+max_vocab : 100000
+max_word_doc : -1
+# logging params
+debug : True
+save_interval : 1000
+log_interval : 200
+logging:
+  use_mongo: False
+  dir: logs
