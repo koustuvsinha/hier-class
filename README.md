@@ -2,7 +2,7 @@
 
 Code and Data for the paper [A Hierarchical Neural Attention-based Text Classifier](http://www.aclweb.org/anthology/D18-1094) published as a short paper in EMNLP, 2018.
 
-**Note: This repository is no longer actively maintained.**
+**Note: This repository is no longer actively maintained. Due to unavailibility of saved test splits and model files, reproducibility of the exact numbers of the paper is not guranteed.**
 
 ### Dependencies
 
